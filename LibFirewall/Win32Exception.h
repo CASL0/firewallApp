@@ -14,6 +14,8 @@ namespace Win32Util
         return std::string(buf.data()) + "   (" + msg + ")";
     }
 
+    //Win32のGetLastError()を例外に変換
+    //Win32Exceptionをキャッチする
     class CWin32Exception : public std::runtime_error
     {
     private:
