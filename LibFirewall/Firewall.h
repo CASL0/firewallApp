@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 
 namespace Win32Util 
 {
@@ -6,7 +7,8 @@ namespace Win32Util
 	{
 	private:
 		class Impl;
-		Impl* pimpl;
+		std::unique_ptr<Impl> pimpl;
+
 	public:
 		CFirewall();
 		~CFirewall() = default;
