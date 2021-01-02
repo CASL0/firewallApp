@@ -6,7 +6,7 @@
 
 namespace Win32Util 
 {
-    std::string FormatErrorMessage(DWORD error, const std::string& msg)
+    inline std::string FormatErrorMessage(DWORD error, const std::string& msg)
     {
         static const int BUFFERLENGTH = 1024;
         std::vector<char> buf(BUFFERLENGTH);
@@ -27,7 +27,7 @@ namespace Win32Util
         DWORD GetErrorCode() const { return m_dwError; }
     };
 
-    void ThrowWin32Error(bool expression, const std::string& msg)
+    inline void ThrowWin32Error(bool expression, const std::string& msg)
     {
         if (expression) 
         {
@@ -35,4 +35,3 @@ namespace Win32Util
         }
     }
 }
-

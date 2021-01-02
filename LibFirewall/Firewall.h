@@ -9,6 +9,7 @@ namespace Win32Util
 		Impl* pimpl;
 	public:
 		CFirewall();
-		~CFirewall();
+		~CFirewall() = default;
+		void close();
 	};
 }

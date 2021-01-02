@@ -49,4 +49,12 @@ namespace Win32Util
 
 	}
 
+	CFirewall::CFirewall(): pimpl(new Impl)
+	{
+	}
+
+	void CFirewall::close()
+	{
+		pimpl->close();
+	}
 }	//namespace Win32Util
