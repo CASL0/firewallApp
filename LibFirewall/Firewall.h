@@ -1,8 +1,7 @@
 #pragma once
 #include <memory>
 
-namespace Win32Util 
-{
+namespace Win32Util{ namespace WfpUtil{
 	class CFirewall
 	{
 	private:
@@ -13,5 +12,6 @@ namespace Win32Util
 		CFirewall();
 		~CFirewall() = default;
 		void close();
+
 	};
-}
+}}

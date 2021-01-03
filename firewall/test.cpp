@@ -12,6 +12,7 @@
 #pragma comment(lib, "LibFirewall.lib")
 
 using namespace Win32Util;
+using namespace ::WfpUtil;
 namespace logging = boost::log;
 namespace expr = boost::log::expressions;
 namespace sinks = boost::log::sinks;

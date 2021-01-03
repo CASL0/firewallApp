@@ -11,8 +11,7 @@
 #pragma comment(lib, "Rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
 
-namespace Win32Util
-{
+namespace Win32Util{ namespace WfpUtil{
 	typedef struct
 	{
 		UINT16 port;		//ƒ|[ƒg”Ô†
@@ -105,4 +104,5 @@ namespace Win32Util
 	{
 		pimpl->close();
 	}
+}	//namespace WfpUtil
 }	//namespace Win32Util
