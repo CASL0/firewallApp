@@ -53,8 +53,8 @@ namespace Win32Util{ namespace WfpUtil{
 		//入力例："192.168.0.1"
 		UINT32 TranslateStr2Hex(std::string sAddr);
 
-		inline void SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT32 dwAddr, UINT32 dwMask);
-		inline void SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT16 wPort);
+		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask);
+		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort);
 	};
 
 	CFirewall::Impl::Impl() : m_hEngine(nullptr), m_subLayerGUID({ 0 })
@@ -125,24 +125,28 @@ namespace Win32Util{ namespace WfpUtil{
 		return ntohl(hexAddr.S_un.S_addr);
 	}
 
-	inline void CFirewall::Impl::SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT32 dwAddr, UINT32 dwMask)
+	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask)
 	{
 		std::shared_ptr<FWP_V4_ADDR_AND_MASK> pFwpAddrMask = std::make_shared<FWP_V4_ADDR_AND_MASK>();
 		pFwpAddrMask->addr = dwAddr;
 		pFwpAddrMask->mask = dwMask;
 
-		pFwpCondition->fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
-		pFwpCondition->matchType = FWP_MATCH_EQUAL;
-		pFwpCondition->conditionValue.type = FWP_V4_ADDR_MASK;
-		pFwpCondition->conditionValue.v4AddrMask = pFwpAddrMask.get();
+		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
+		fwpCondition.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+		fwpCondition.matchType = FWP_MATCH_EQUAL;
+		fwpCondition.conditionValue.type = FWP_V4_ADDR_MASK;
+		fwpCondition.conditionValue.v4AddrMask = pFwpAddrMask.get();
+		vecFwpConditions.push_back(fwpCondition);
 	}
 
-	inline void CFirewall::Impl::SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT16 wPort)
+	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort)
 	{
-		pFwpCondition->fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
-		pFwpCondition->matchType = FWP_MATCH_EQUAL;
-		pFwpCondition->conditionValue.type = FWP_UINT16;
-		pFwpCondition->conditionValue.uint16 = wPort;
+		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
+		fwpCondition.fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+		fwpCondition.matchType = FWP_MATCH_EQUAL;
+		fwpCondition.conditionValue.type = FWP_UINT16;
+		fwpCondition.conditionValue.uint16 = wPort;
+		vecFwpConditions.push_back(fwpCondition);
 	}
 
 	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
@@ -157,7 +161,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		FWPM_FILTER0 fwpFilter = { 0 };
 		constexpr int numConditions = 2;	//IPアドレスとポートの二つ
-		FWPM_FILTER_CONDITION0 fwpConditions[numConditions] = { 0 };
+		std::vector<FWPM_FILTER_CONDITION0> vecFwpConditions;
 		FWP_V4_ADDR_AND_MASK fwpAddrMask = { 0 };
 
 		fwpFilter.subLayerKey = m_subLayerGUID;
@@ -169,11 +173,11 @@ namespace Win32Util{ namespace WfpUtil{
 		//許可 or 遮断を指定
 		fwpFilter.action.type = action == WFP_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
 
-		fwpFilter.numFilterConditions = numConditions;
-		fwpFilter.filterCondition = fwpConditions;
+		SetupConditions(vecFwpConditions, filterCondition.hexAddr, filterCondition.mask);
+		SetupConditions(vecFwpConditions, filterCondition.port);
 
-		SetupConditions(&fwpConditions[0], filterCondition.hexAddr, filterCondition.mask);
-		SetupConditions(&fwpConditions[1], filterCondition.port);
+		fwpFilter.numFilterConditions = vecFwpConditions.size();
+		fwpFilter.filterCondition = vecFwpConditions.data();
 
 		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
 		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterCondition.filterID);
