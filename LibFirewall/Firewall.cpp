@@ -40,6 +40,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void WfpSetup();
 		void AddSubLayer();
 		void RemoveSubLayer();
+		void RemoveAllFilters();
 
 		//IPアドレスの文字列からホストオーダーへ変換
 		//入力例："192.168.0.1"
@@ -60,6 +61,8 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::close()
 	{
+		RemoveAllFilters();
+
 		DWORD dwRet;
 		dwRet = WSACleanup();
 		ThrowWin32Error(dwRet != 0, "WSACleanup failed");
@@ -103,7 +106,7 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		BOOST_LOG_TRIVIAL(trace) << "Removing Sublayer";
 		DWORD dwRet = FwpmSubLayerDeleteByKey0(m_hEngine, &m_subLayerGUID);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0 failed");
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
 	}
 
@@ -158,7 +161,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		//許可 or 遮断を指定
 		fwpFilter.action.type = action == WFP_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
-		
+
 		fwpFilter.numFilterConditions = numConditions;
 		fwpFilter.filterCondition = fwpConditions;
 
@@ -170,7 +173,19 @@ namespace Win32Util{ namespace WfpUtil{
 		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
 		m_vecConditions.push_back(filterCondition);
 	}
-	
+
+	void CFirewall::Impl::RemoveAllFilters()
+	{
+		BOOST_LOG_TRIVIAL(trace) << "RemoveAllFilters begins";
+		DWORD dwRet = ERROR_BAD_COMMAND;
+		for (auto& elem : m_vecConditions)
+		{
+			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
+			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.filterID);
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+		}
+	}
+
 	void CFirewall::Impl::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
 	{
 	}

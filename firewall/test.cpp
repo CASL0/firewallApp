@@ -8,6 +8,7 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/trivial.hpp>
+#include <conio.h>
 
 #pragma comment(lib, "LibFirewall.lib")
 
@@ -24,6 +25,8 @@ int main(void)
 	try
 	{
 		CFirewall* firewall = new CFirewall;
+		firewall->AddFilter(WFP_ACTION_BLOCK, "IP addr", 0xffffffff, 443);
+		_getch();
 		firewall->close();
 	}
 	catch (const CWin32Exception& e)
