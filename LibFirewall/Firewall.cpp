@@ -35,12 +35,17 @@ namespace Win32Util{ namespace WfpUtil{
 		~Impl() = default;
 		void close();
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
+		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
 		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
 		void WfpSetup();
 		void AddSubLayer();
 		void RemoveSubLayer();
 		void RemoveAllFilters();
+
+		//サービス名を解決する
+		//存在しなければ0を返す
+		UINT16 GetPortByServ(std::string sService);
 
 		//IPアドレスの文字列からホストオーダーへ変換
 		//入力例："192.168.0.1"
@@ -174,6 +179,18 @@ namespace Win32Util{ namespace WfpUtil{
 		m_vecConditions.push_back(filterCondition);
 	}
 
+	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol)
+	{
+		UINT16 wPort = GetPortByServ(sProtocol);
+
+		//プロトコルが解決できなかった場合はデフォルトポート(80)に設定することにする
+		//todo: もっといいやり方があるかも
+		if (wPort == 0)
+		{
+			wPort = 80;
+		}
+		AddFilter(action, sAddr, dwMask, wPort);
+	}
 	void CFirewall::Impl::RemoveAllFilters()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "RemoveAllFilters begins";
@@ -184,6 +201,12 @@ namespace Win32Util{ namespace WfpUtil{
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.filterID);
 			ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
 		}
+	}
+
+	UINT16 CFirewall::Impl::GetPortByServ(std::string sService)
+	{
+		servent* pServEnt = getservbyname(sService.c_str(), nullptr);
+		return pServEnt ? ntohs(pServEnt->s_port):0;
 	}
 
 	void CFirewall::Impl::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
@@ -201,6 +224,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
 	{
 		pimpl->AddFilter(action, sAddr, dwMask, port);
+	}
+
+	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol)
+	{
+		pimpl->AddFilter(action, sAddr, dwMask, sProtocol);
 	}
 
 	void CFirewall::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
