@@ -1,7 +1,9 @@
 #include <WinSock2.h>
+#include <WS2tcpip.h>
 #include <Windows.h>
 #include <vector>
 #include <fwpmu.h>
+#include <memory>
 #include <boost/log/trivial.hpp>
 
 #include "Firewall.h"
@@ -32,10 +34,19 @@ namespace Win32Util{ namespace WfpUtil{
 		Impl();
 		~Impl() = default;
 		void close();
+		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
+		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
 		void WfpSetup();
 		void AddSubLayer();
 		void RemoveSubLayer();
+
+		//IPアドレスの文字列からホストオーダーへ変換
+		//入力例："192.168.0.1"
+		UINT32 TranslateStr2Hex(std::string sAddr);
+
+		inline void SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT32 dwAddr, UINT32 dwMask);
+		inline void SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT16 wPort);
 	};
 
 	CFirewall::Impl::Impl() : m_hEngine(nullptr), m_subLayerGUID({ 0 })
@@ -66,7 +77,7 @@ namespace Win32Util{ namespace WfpUtil{
 		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmEngineOpen0 failed");
 		AddSubLayer();
 	}
-	
+
 	void CFirewall::Impl::AddSubLayer()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "AddSubLayer begins";
@@ -95,7 +106,74 @@ namespace Win32Util{ namespace WfpUtil{
 		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0");
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
 	}
+
+	UINT32 CFirewall::Impl::TranslateStr2Hex(std::string sAddr)
+	{
+		in_addr hexAddr;
+		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
+		ThrowWin32Error(iRet != 1, "inet_pton failed");
+		return ntohl(hexAddr.S_un.S_addr);
+	}
+
+	inline void CFirewall::Impl::SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT32 dwAddr, UINT32 dwMask)
+	{
+		std::shared_ptr<FWP_V4_ADDR_AND_MASK> pFwpAddrMask = std::make_shared<FWP_V4_ADDR_AND_MASK>();
+		pFwpAddrMask->addr = dwAddr;
+		pFwpAddrMask->mask = dwMask;
+
+		pFwpCondition->fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+		pFwpCondition->matchType = FWP_MATCH_EQUAL;
+		pFwpCondition->conditionValue.type = FWP_V4_ADDR_MASK;
+		pFwpCondition->conditionValue.v4AddrMask = pFwpAddrMask.get();
+	}
+
+	inline void CFirewall::Impl::SetupConditions(FWPM_FILTER_CONDITION0* pFwpCondition, UINT16 wPort)
+	{
+		pFwpCondition->fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+		pFwpCondition->matchType = FWP_MATCH_EQUAL;
+		pFwpCondition->conditionValue.type = FWP_UINT16;
+		pFwpCondition->conditionValue.uint16 = wPort;
+	}
+
+	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	{
+		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
+
+		FILTER_COND_INFO filterCondition;
+		filterCondition.hexAddr = TranslateStr2Hex(sAddr);
+		filterCondition.mask = dwMask;
+		filterCondition.port = port;
+		BOOST_LOG_TRIVIAL(trace) << "TranslateStr2Hex succeeded";
+
+		FWPM_FILTER0 fwpFilter = { 0 };
+		constexpr int numConditions = 2;	//IPアドレスとポートの二つ
+		FWPM_FILTER_CONDITION0 fwpConditions[numConditions] = { 0 };
+		FWP_V4_ADDR_AND_MASK fwpAddrMask = { 0 };
+
+		fwpFilter.subLayerKey = m_subLayerGUID;
+		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+		fwpFilter.weight.type = FWP_EMPTY;
+		fwpFilter.displayData.name = const_cast<WCHAR*>(L"IPv4Permit");
+		fwpFilter.displayData.description = const_cast<WCHAR*>(L"Filter for IPv4");
+
+		//許可 or 遮断を指定
+		fwpFilter.action.type = action == WFP_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
+		
+		fwpFilter.numFilterConditions = numConditions;
+		fwpFilter.filterCondition = fwpConditions;
+
+		SetupConditions(&fwpConditions[0], filterCondition.hexAddr, filterCondition.mask);
+		SetupConditions(&fwpConditions[1], filterCondition.port);
+
+		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
+		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterCondition.filterID);
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		m_vecConditions.push_back(filterCondition);
+	}
 	
+	void CFirewall::Impl::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	{
+	}
 	CFirewall::CFirewall(): pimpl(std::make_unique<Impl>())
 	{
 	}
@@ -104,5 +182,16 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		pimpl->close();
 	}
+
+	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	{
+		pimpl->AddFilter(action, sAddr, dwMask, port);
+	}
+
+	void CFirewall::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	{
+		pimpl->RemoveFilter(action, sAddr, dwMask, port);
+	}
+
 }	//namespace WfpUtil
 }	//namespace Win32Util
