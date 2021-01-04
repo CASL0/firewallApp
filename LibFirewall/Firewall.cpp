@@ -39,6 +39,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
 		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
 		void AddFilter(WFP_ACTION action, std::string sAddr);
+		void AddFilter(WFP_ACTION action, UINT16 port);
 		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
 		void WfpSetup();
@@ -208,6 +209,12 @@ namespace Win32Util{ namespace WfpUtil{
 		UINT16 wPort = GetPortByServ(sProtocol);	
 		AddFilter(action, sAddr, dwMask, wPort);
 	}
+
+	void CFirewall::Impl::AddFilter(WFP_ACTION action, UINT16 port)
+	{
+		AddFilter(action, "", 0xffffffff, port);
+	}
+
 	void CFirewall::Impl::RemoveAllFilters()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "RemoveAllFilters begins";
@@ -276,6 +283,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr)
 	{
 		pimpl->AddFilter(action, sAddr);
+	}
+
+	void CFirewall::AddFilter(WFP_ACTION action, UINT16 port)
+	{
+		pimpl->AddFilter(action, port);
 	}
 
 	void CFirewall::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
