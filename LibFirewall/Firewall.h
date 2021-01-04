@@ -25,6 +25,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
 		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
+		void AddFilter(WFP_ACTION action, std::string sAddr);
 		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
 	};

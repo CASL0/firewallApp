@@ -38,6 +38,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
 		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
+		void AddFilter(WFP_ACTION action, std::string sAddr);
 		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
 		void WfpSetup();
@@ -149,15 +150,17 @@ namespace Win32Util{ namespace WfpUtil{
 		vecFwpConditions.push_back(fwpCondition);
 	}
 
+	//IPアドレス文字列が空文字列の場合はポートのみでフィルター
+	//ポートが0の場合はIPアドレスのみでフィルター
+	//両方該当する場合はフィルターの追加をしない
 	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
 	{
 		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
 
-		FILTER_COND_INFO filterCondition;
-		filterCondition.hexAddr = TranslateStr2Hex(sAddr);
-		filterCondition.mask = dwMask;
-		filterCondition.port = port;
-		BOOST_LOG_TRIVIAL(trace) << "TranslateStr2Hex succeeded";
+		if (sAddr == "" && port == 0)
+		{
+			return;
+		}
 
 		FWPM_FILTER0 fwpFilter = { 0 };
 		constexpr int numConditions = 2;	//IPアドレスとポートの二つ
@@ -173,8 +176,23 @@ namespace Win32Util{ namespace WfpUtil{
 		//許可 or 遮断を指定
 		fwpFilter.action.type = action == WFP_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
 
-		SetupConditions(vecFwpConditions, filterCondition.hexAddr, filterCondition.mask);
-		SetupConditions(vecFwpConditions, filterCondition.port);
+		FILTER_COND_INFO filterCondition;
+
+		//IPアドレス文字列が空文字列の場合は、ポートのみをフィルター条件に追加
+		if (sAddr != "")
+		{
+			filterCondition.hexAddr = TranslateStr2Hex(sAddr);
+			filterCondition.mask = dwMask;
+			SetupConditions(vecFwpConditions, filterCondition.hexAddr, filterCondition.mask);
+			BOOST_LOG_TRIVIAL(trace) << "TranslateStr2Hex succeeded";
+		}
+
+		//ポートが0の場合は、IPアドレスのみをフィルター条件に追加
+		if (port != 0)
+		{
+			filterCondition.port = port;
+			SetupConditions(vecFwpConditions, filterCondition.port);
+		}
 
 		fwpFilter.numFilterConditions = vecFwpConditions.size();
 		fwpFilter.filterCondition = vecFwpConditions.data();
@@ -187,14 +205,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol)
 	{
-		UINT16 wPort = GetPortByServ(sProtocol);
-
-		//プロトコルが解決できなかった場合はデフォルトポート(80)に設定することにする
-		//todo: もっといいやり方があるかも
-		if (wPort == 0)
-		{
-			wPort = 80;
-		}
+		UINT16 wPort = GetPortByServ(sProtocol);	
 		AddFilter(action, sAddr, dwMask, wPort);
 	}
 	void CFirewall::Impl::RemoveAllFilters()
@@ -217,6 +228,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol)
 	{
 		AddFilter(action, sAddr, 0xffffffff, sProtocol);
+	}
+
+	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr)
+	{
+		AddFilter(action, sAddr, 0xffffffff, 0);
 	}
 
 	UINT16 CFirewall::Impl::GetPortByServ(std::string sService)
@@ -255,6 +271,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol)
 	{
 		pimpl->AddFilter(action, sAddr, sProtocol);
+	}
+
+	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr)
+	{
+		pimpl->AddFilter(action, sAddr);
 	}
 
 	void CFirewall::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
