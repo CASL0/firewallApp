@@ -27,11 +27,27 @@ namespace Win32Util
         DWORD GetErrorCode() const { return m_dwError; }
     };
 
-    inline void ThrowWin32Error(bool expression, const std::string& msg)
+    inline void ThrowLastError(bool expression, const std::string& msg)
     {
         if (expression) 
         {
             throw CWin32Exception(GetLastError(), msg);
+        }
+    }
+
+    inline void ThrowHresultError(bool expression, const std::string& msg)
+    {
+        if (expression)
+        {
+            throw CWin32Exception(HRESULT_FROM_WIN32(GetLastError()), msg);
+        }
+    }
+
+    inline void ThrowWsaError(bool expression, const std::string& msg)
+    {
+        if (expression)
+        {
+            throw CWin32Exception(WSAGetLastError(), msg);
         }
     }
 }

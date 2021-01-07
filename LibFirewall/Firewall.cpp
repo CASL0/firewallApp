@@ -64,7 +64,7 @@ namespace Win32Util{ namespace WfpUtil{
 		DWORD dwRet;
 		WSADATA wsaData;
 		dwRet = WSAStartup(MAKEWORD(2, 2), &wsaData);
-		ThrowWin32Error(dwRet != 0, "WSAStartup failed");
+		ThrowWsaError(dwRet != 0, "WSAStartup failed");
 		WfpSetup();
 	}
 
@@ -74,11 +74,11 @@ namespace Win32Util{ namespace WfpUtil{
 
 		DWORD dwRet;
 		dwRet = WSACleanup();
-		ThrowWin32Error(dwRet != 0, "WSACleanup failed");
+		ThrowWsaError(dwRet != 0, "WSACleanup failed");
 
 		RemoveSubLayer();
 		dwRet = FwpmEngineClose0(m_hEngine);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmEngineClose0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmEngineClose0 failed");
 	}
 
 	void CFirewall::Impl::WfpSetup()
@@ -86,7 +86,7 @@ namespace Win32Util{ namespace WfpUtil{
 		BOOST_LOG_TRIVIAL(trace) << "WfpSetup begins";
 		DWORD dwRet;
 		dwRet = FwpmEngineOpen0(nullptr, RPC_C_AUTHN_WINNT, nullptr, nullptr, &m_hEngine);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmEngineOpen0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmEngineOpen0 failed");
 		AddSubLayer();
 	}
 
@@ -97,7 +97,7 @@ namespace Win32Util{ namespace WfpUtil{
 		RPC_STATUS rpcStatus = RPC_S_OK;
 
 		rpcStatus = UuidCreate(&fwpSubLayer.subLayerKey);
-		ThrowWin32Error(rpcStatus != RPC_S_OK, "UuidCreate failed");
+		ThrowLastError(rpcStatus != RPC_S_OK, "UuidCreate failed");
 		CopyMemory(&m_subLayerGUID, &fwpSubLayer.subLayerKey, sizeof(fwpSubLayer.subLayerKey));
 		BOOST_LOG_TRIVIAL(trace) << "UuidCreate succeeded";
 
@@ -108,14 +108,14 @@ namespace Win32Util{ namespace WfpUtil{
 
 		BOOST_LOG_TRIVIAL(trace) << "Adding Sublayer";
 		DWORD dwRet = FwpmSubLayerAdd0(m_hEngine, &fwpSubLayer, nullptr);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmSubLayerAdd0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmSubLayerAdd0 failed");
 	}
 
 	void CFirewall::Impl::RemoveSubLayer()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "Removing Sublayer";
 		DWORD dwRet = FwpmSubLayerDeleteByKey0(m_hEngine, &m_subLayerGUID);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0 failed");
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
 	}
 
@@ -123,7 +123,7 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		in_addr hexAddr;
 		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
-		ThrowWin32Error(iRet != 1, "inet_pton failed");
+		ThrowWsaError(iRet != 1, "inet_pton failed");
 		return ntohl(hexAddr.S_un.S_addr);
 	}
 
@@ -200,7 +200,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
 		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterCondition.filterID);
-		ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
 		m_vecConditions.push_back(filterCondition);
 	}
 
@@ -223,7 +223,7 @@ namespace Win32Util{ namespace WfpUtil{
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.filterID);
-			ThrowWin32Error(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
 		}
 	}
 
