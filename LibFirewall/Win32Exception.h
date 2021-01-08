@@ -14,24 +14,25 @@ namespace Win32Util
         return std::string(buf.data()) + "   (" + msg + ")";
     }
 
-    //Win32のGetLastError()を例外に変換
-    //Win32Exceptionをキャッチする
+    //Win32のエラーコードを例外に変換
+    //  クラス利用者はWin32Exceptionをキャッチする
+    template <typename T>
     class CWin32Exception : public std::runtime_error
     {
     private:
-        DWORD m_dwError;
+        T m_dwError;
     public:
-        CWin32Exception(DWORD error, const std::string& msg)
+        CWin32Exception(T error, const std::string& msg)
             : runtime_error(FormatErrorMessage(error, msg)), m_dwError(error) { }
 
-        DWORD GetErrorCode() const { return m_dwError; }
+        T GetErrorCode() const { return m_dwError; }
     };
 
     inline void ThrowLastError(bool expression, const std::string& msg)
     {
         if (expression) 
         {
-            throw CWin32Exception(GetLastError(), msg);
+            throw CWin32Exception<DWORD>(GetLastError(), msg);
         }
     }
 
@@ -39,7 +40,7 @@ namespace Win32Util
     {
         if (expression)
         {
-            throw CWin32Exception(HRESULT_FROM_WIN32(GetLastError()), msg);
+            throw CWin32Exception<HRESULT>(HRESULT_FROM_WIN32(GetLastError()), msg);
         }
     }
 
@@ -47,7 +48,7 @@ namespace Win32Util
     {
         if (expression)
         {
-            throw CWin32Exception(WSAGetLastError(), msg);
+            throw CWin32Exception<int>(WSAGetLastError(), msg);
         }
     }
 }
