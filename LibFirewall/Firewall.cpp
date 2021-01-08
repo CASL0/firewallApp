@@ -38,7 +38,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
 		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
 		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
-		void AddFilter(WFP_ACTION action, std::string sAddr);
+		void AddFilter(WFP_ACTION action, std::string sAddrOrProtocol);		//IPアドレスまたはプロトコルを指定
 		void AddFilter(WFP_ACTION action, UINT16 port);
 		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
 
@@ -237,9 +237,20 @@ namespace Win32Util{ namespace WfpUtil{
 		AddFilter(action, sAddr, 0xffffffff, sProtocol);
 	}
 
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr)
+	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddrOrProtocol)
 	{
-		AddFilter(action, sAddr, 0xffffffff, 0);
+		//sAddrOrProtocolをまずはプロトコルとして解釈し、ポートに変換する
+		//解決できなければアドレスとして解釈する
+
+		UINT16 wPort = GetPortByServ(sAddrOrProtocol);
+		if (wPort == 0)
+		{
+			AddFilter(action, sAddrOrProtocol, 0xffffffff, 0);
+		}
+		else
+		{
+			AddFilter(action, wPort);
+		}
 	}
 
 	UINT16 CFirewall::Impl::GetPortByServ(std::string sService)
