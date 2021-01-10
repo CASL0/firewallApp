@@ -19,6 +19,8 @@ namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
 
 static const std::wstring STRING_BTN = L"’Ç‰Á";
+static const std::wstring STRING_COMBO[] = { L"‹–‰Â",L"ŽÕ’f" };
+static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
 static DWORD itemID = 0;
 
@@ -45,6 +47,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     static HWND hWndEditAddr = nullptr;
     static HWND hWndEditProtocol = nullptr;
     static HWND hWndList = nullptr;
+    static HWND hWndComboAction = nullptr;
 
     switch (message)
     {
@@ -53,8 +56,12 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         hWndEditAddr = GetDlgItem(hWndDlg, IDC_IPADDRESS);
         hWndEditProtocol = GetDlgItem(hWndDlg, IDC_EDIT_PROTOCOL);
         hWndList = GetDlgItem(hWndDlg, IDC_LIST);
+        hWndComboAction = GetDlgItem(hWndDlg, IDC_COMBO);
 
         SetWindowText(hWndButtonAdd, STRING_BTN.c_str());
+        SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[0].c_str());
+        SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[1].c_str());
+        SendMessage(hWndComboAction, CB_SETCURSEL, INIT_COMBO_SEL, 0);
 
         return (INT_PTR)TRUE;
     case WM_CLOSE:
@@ -69,11 +76,14 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             std::vector<WCHAR> sProtocol(LENGTH_BUFFER);
             GetWindowText(hWndEditAddr, sIpAddr.data(), LENGTH_BUFFER);
             GetWindowText(hWndEditProtocol, sProtocol.data(), LENGTH_BUFFER);
+            int iCurSel = (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
 
             std::wstring sListItem;
             sListItem = sIpAddr.data();
             sListItem += L"    ";
             sListItem += sProtocol.data();
+            sListItem += L"    ";
+            sListItem += STRING_COMBO[iCurSel];
 
             int pos = (int)SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)sListItem.c_str());
             SendMessage(hWndList, LB_SETITEMDATA, pos, (LPARAM)itemID++);
