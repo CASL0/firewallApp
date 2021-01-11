@@ -164,9 +164,7 @@ namespace Win32Util{ namespace WfpUtil{
 		}
 
 		FWPM_FILTER0 fwpFilter = { 0 };
-		constexpr int numConditions = 2;	//IPアドレスとポートの二つ
 		std::vector<FWPM_FILTER_CONDITION0> vecFwpConditions;
-		FWP_V4_ADDR_AND_MASK fwpAddrMask = { 0 };
 
 		fwpFilter.subLayerKey = m_subLayerGUID;
 		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
@@ -262,7 +260,7 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::Impl::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
 	{
 	}
-	CFirewall::CFirewall(): pimpl(std::make_unique<Impl>())
+	CFirewall::CFirewall(): pimpl(std::make_shared<Impl>())
 	{
 	}
 

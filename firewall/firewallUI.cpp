@@ -26,7 +26,7 @@ static const std::wstring STRING_TEXT_PROTOCOL = L"プロトコル";
 static const std::wstring STRING_TEXT_ACTION = L"アクション";
 static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
-static DWORD itemID = 0;
+static DWORD nextItemID = 0;
 
 INT_PTR CALLBACK DialogFunc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -105,7 +105,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 
             int pos = (int)SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)ssListItem.str().c_str());
-            SendMessage(hWndList, LB_SETITEMDATA, pos, (LPARAM)itemID++);
+            SendMessage(hWndList, LB_SETITEMDATA, pos, (LPARAM)nextItemID++);
 
             SetWindowText(hWndEditAddr, L"");
             SetWindowText(hWndEditProtocol, L"");
