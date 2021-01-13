@@ -19,7 +19,8 @@ namespace expr = boost::log::expressions;
 namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
 
-static const std::wstring STRING_BTN = L"追加";
+static const std::wstring STRING_BTN_ADD = L"追加";
+static const std::wstring STRING_BTN_DEL = L"削除";
 static const std::wstring STRING_COMBO[] = { L"許可",L"遮断" };
 static const std::wstring STRING_TEXT_ADDR = L"IPアドレス";
 static const std::wstring STRING_TEXT_PROTOCOL = L"プロトコル";
@@ -48,6 +49,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     UNREFERENCED_PARAMETER(lParam);
 
     static HWND hWndButtonAdd = nullptr;
+    static HWND hWndButtonDel = nullptr;
     static HWND hWndEditAddr = nullptr;
     static HWND hWndEditProtocol = nullptr;
     static HWND hWndList = nullptr;
@@ -64,7 +66,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 
         //「追加」ボタン
         hWndButtonAdd = GetDlgItem(hWndDlg, IDC_BUTTON_ADD);
-        SetWindowText(hWndButtonAdd, STRING_BTN.c_str());
+        SetWindowText(hWndButtonAdd, STRING_BTN_ADD.c_str());
+
+        //「削除」ボタン
+        hWndButtonDel = GetDlgItem(hWndDlg, IDC_BUTTON_DEL);
+        SetWindowText(hWndButtonDel, STRING_BTN_DEL.c_str());
 
         //IPアドレス入力フォーム
         hWndEditAddr = GetDlgItem(hWndDlg, IDC_IPADDRESS);
@@ -95,6 +101,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         switch (LOWORD(wParam))
         {
         case IDC_BUTTON_ADD:
+        {
             std::vector<WCHAR> sIpAddr(LENGTH_BUFFER);
             std::vector<WCHAR> sProtocol(LENGTH_BUFFER);
             GetWindowText(hWndEditAddr, sIpAddr.data(), LENGTH_BUFFER);
@@ -104,13 +111,30 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             std::wstringstream ssListItem;
             ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 
-            int pos = (int)SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)ssListItem.str().c_str());
-            SendMessage(hWndList, LB_SETITEMDATA, pos, (LPARAM)nextItemID++);
+            SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)ssListItem.str().c_str());
 
             SetWindowText(hWndEditAddr, L"");
             SetWindowText(hWndEditProtocol, L"");
             return (INT_PTR)TRUE;
         }
+        case IDC_BUTTON_DEL:
+        {
+            //未選択の場合は-1が返ってくる
+            int idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
+            if (idx == -1)
+            {
+                return (INT_PTR)TRUE;
+            }
+            int id = MessageBox(hWndDlg, L"削除しますか？", L"", MB_OKCANCEL | MB_ICONEXCLAMATION);
+
+            if (id == IDCANCEL)
+            {
+                return (INT_PTR)TRUE;
+            }
+            SendMessage(hWndList, LB_DELETESTRING, idx, 0);
+            return (INT_PTR)TRUE;        
+        }
+        }   //switch (LOWORD(wParam))
         break;
     }
     return (INT_PTR)FALSE;
