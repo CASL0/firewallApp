@@ -40,7 +40,9 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
 		void AddFilter(WFP_ACTION action, std::string sAddrOrProtocol);		//IPアドレスまたはプロトコルを指定
 		void AddFilter(WFP_ACTION action, UINT16 port);
-		void RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
+		
+		//0-based インデックスを指定してフィルターを削除する
+		void RemoveFilter(int index);
 
 		void WfpSetup();
 		void AddSubLayer();
@@ -257,8 +259,15 @@ namespace Win32Util{ namespace WfpUtil{
 		return pServEnt ? ntohs(pServEnt->s_port):0;
 	}
 
-	void CFirewall::Impl::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	void CFirewall::Impl::RemoveFilter(int index)
 	{
+		BOOST_LOG_TRIVIAL(trace) << "RemoveFilter begins";
+		DWORD dwRet = ERROR_BAD_COMMAND;
+
+		BOOST_LOG_TRIVIAL(trace) << "Removing filter";
+		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecConditions.at(index).filterID);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+		m_vecConditions.erase(m_vecConditions.cbegin() + index);
 	}
 	CFirewall::CFirewall(): pimpl(std::make_shared<Impl>())
 	{
@@ -299,9 +308,9 @@ namespace Win32Util{ namespace WfpUtil{
 		pimpl->AddFilter(action, port);
 	}
 
-	void CFirewall::RemoveFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
+	void CFirewall::RemoveFilter(int index)
 	{
-		pimpl->RemoveFilter(action, sAddr, dwMask, port);
+		pimpl->RemoveFilter(index);
 	}
 
 }	//namespace WfpUtil

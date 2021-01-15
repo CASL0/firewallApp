@@ -108,14 +108,14 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         //HRESULT‚Ì•ß‘¨
         catch (CWin32Exception<HRESULT>& e)
         {
-            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed";
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed with error: " << e.what();
             break;
         }
 
         //WSAGetLastError()‚Ì•ß‘¨
         catch (CWin32Exception<int>& e)
         {
-            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed";
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed with error: " << e.what();
             break;
         }
         EndDialog(hWndDlg, 0);
@@ -140,27 +140,28 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             //GetLastError()‚Ì•ß‘¨
             catch (CWin32Exception<DWORD>& e)
             {
-                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 break;
             }
 
             //HRESULT‚Ì•ß‘¨
             catch (CWin32Exception<HRESULT>& e)
             {
-                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 break;
             }
 
             //WSAGetLastError()‚Ì•ß‘¨
             catch (CWin32Exception<int>& e)
             {
-                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 break;
             }
             std::wstringstream ssListItem;
             ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 
-            SendMessage(hWndList, LB_ADDSTRING, 0, (LPARAM)ssListItem.str().c_str());
+            //ListBox‚Ì––”ö‚É’Ç‰Á(‘æ3ˆø”‚É-1‚ðŽw’è)
+            SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)ssListItem.str().c_str());
 
             SetWindowText(hWndEditAddr, L"");
             SetWindowText(hWndEditProtocol, L"");
@@ -179,6 +180,16 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             if (id == IDCANCEL)
             {
                 return (INT_PTR)TRUE;
+            }
+
+            try
+            {
+                pFirewall->RemoveFilter(idx);
+            }
+            catch (CWin32Exception<HRESULT>& e)
+            {
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::RemovingFilter failed with error: " << e.what();
+                break;
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
             return (INT_PTR)TRUE;        
