@@ -27,7 +27,8 @@ static const std::wstring STRING_TEXT_PROTOCOL = L"プロトコル";
 static const std::wstring STRING_TEXT_ACTION = L"アクション";
 static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
-static DWORD nextItemID = 0;
+
+static std::shared_ptr<CFirewall> pFirewall = std::make_shared<CFirewall>();
 
 INT_PTR CALLBACK DialogFunc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -92,8 +93,31 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         SetWindowText(hWndTextProtocol, STRING_TEXT_PROTOCOL.c_str());
         SetWindowText(hWndTextAction, STRING_TEXT_ACTION.c_str());
 
+        logging::add_common_attributes();
+        logging::add_file_log(
+            keywords::file_name = "firewall.log", // logを出力するファイル名
+            keywords::format =
+            "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
+        );
         return (INT_PTR)TRUE;
     case WM_CLOSE:
+        try
+        {
+            pFirewall->close();
+        }
+        //HRESULTの捕捉
+        catch (CWin32Exception<HRESULT>& e)
+        {
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed";
+            break;
+        }
+
+        //WSAGetLastError()の捕捉
+        catch (CWin32Exception<int>& e)
+        {
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed";
+            break;
+        }
         EndDialog(hWndDlg, 0);
         return (INT_PTR)TRUE;
 
@@ -102,12 +126,37 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
         case IDC_BUTTON_ADD:
         {
-            std::vector<WCHAR> sIpAddr(LENGTH_BUFFER);
-            std::vector<WCHAR> sProtocol(LENGTH_BUFFER);
-            GetWindowText(hWndEditAddr, sIpAddr.data(), LENGTH_BUFFER);
-            GetWindowText(hWndEditProtocol, sProtocol.data(), LENGTH_BUFFER);
+            std::vector<CHAR> sIpAddr(LENGTH_BUFFER);
+            std::vector<CHAR> sProtocol(LENGTH_BUFFER);
+            GetWindowTextA(hWndEditAddr, sIpAddr.data(), LENGTH_BUFFER);
+            GetWindowTextA(hWndEditProtocol, sProtocol.data(), LENGTH_BUFFER);
             int iCurSel = (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
 
+            try
+            {
+                pFirewall->AddFilter(iCurSel == 0 ? WFP_ACTION_PERMIT : WFP_ACTION_BLOCK, sIpAddr.data(), sProtocol.data());
+            }
+
+            //GetLastError()の捕捉
+            catch (CWin32Exception<DWORD>& e)
+            {
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                break;
+            }
+
+            //HRESULTの捕捉
+            catch (CWin32Exception<HRESULT>& e)
+            {
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                break;
+            }
+
+            //WSAGetLastError()の捕捉
+            catch (CWin32Exception<int>& e)
+            {
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed";
+                break;
+            }
             std::wstringstream ssListItem;
             ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 
