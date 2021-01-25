@@ -26,22 +26,25 @@ namespace Win32Util{ namespace WfpUtil{
 	class CFirewall::Impl
 	{
 	public:
-		std::vector<FILTER_COND_INFO> m_vecConditions;
 		HANDLE m_hEngine;
 		GUID m_subLayerGUID;
-
+		std::vector<UINT64> m_vecFilterId;
+		std::vector<FWPM_FILTER_CONDITION0> m_vecConditions;
 	public:
 		Impl();
 		~Impl() = default;
 		void close();
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
-		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
-		void AddFilter(WFP_ACTION action, std::string sAddrOrProtocol);		//IPアドレスまたはプロトコルを指定
-		void AddFilter(WFP_ACTION action, UINT16 port);
+
+		void AddIpAddrCondition(const std::string& sIpAddr);
+		void AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask);
+		void AddPortCondition(UINT16 wPort);
+		void AddPortCondition(const std::string& sProtocol);
+
+		void AddFilter(FW_ACTION action);
 		
-		//0-based インデックスを指定してフィルターを削除する
+		//フィルターの項番を指定して削除する
+		//何番目に追加したかを指定する(0-based)
+		//例：RemoveFilter(2) -> ３番目に追加したフィルターを削除する
 		void RemoveFilter(int index);
 
 		void WfpSetup();
@@ -49,19 +52,23 @@ namespace Win32Util{ namespace WfpUtil{
 		void RemoveSubLayer();
 		void RemoveAllFilters();
 
-		//サービス名を解決する
-		//存在しなければ0を返す
-		UINT16 GetPortByServ(std::string sService);
+		//サービス名を解決する(etc/servicesからの解決)
+		//存在しない場合runtime_errorをthrowする(クライアントコードでは例外を捕捉する)
+		UINT16 GetPortByServ(const std::string& sService);
 
 		//IPアドレスの文字列からホストオーダーへ変換
 		//入力例："192.168.0.1"
-		UINT32 TranslateStr2Hex(std::string sAddr);
+		UINT32 TranslateStr2Hex(const std::string& sAddr);
 
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort);
 	};
 
-	CFirewall::Impl::Impl() : m_hEngine(nullptr), m_subLayerGUID({ 0 })
+	CFirewall::Impl::Impl() :
+		m_hEngine(nullptr),
+		m_subLayerGUID({ 0 }),
+		m_vecFilterId(std::vector<UINT64>()), 
+		m_vecConditions(std::vector<FWPM_FILTER_CONDITION0>())
 	{
 		DWORD dwRet;
 		WSADATA wsaData;
@@ -103,8 +110,8 @@ namespace Win32Util{ namespace WfpUtil{
 		CopyMemory(&m_subLayerGUID, &fwpSubLayer.subLayerKey, sizeof(fwpSubLayer.subLayerKey));
 		BOOST_LOG_TRIVIAL(trace) << "UuidCreate succeeded";
 
-		fwpSubLayer.displayData.name = const_cast<wchar_t*>(L"WfpSublayer");
-		fwpSubLayer.displayData.description = const_cast<wchar_t*>(L"create WfpSublayer");
+		fwpSubLayer.displayData.name = const_cast<WCHAR*>(L"WfpSublayer");
+		fwpSubLayer.displayData.description = const_cast<WCHAR*>(L"create WfpSublayer");
 		fwpSubLayer.flags = 0;
 		fwpSubLayer.weight = 0x100;
 
@@ -121,7 +128,7 @@ namespace Win32Util{ namespace WfpUtil{
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
 	}
 
-	UINT32 CFirewall::Impl::TranslateStr2Hex(std::string sAddr)
+	UINT32 CFirewall::Impl::TranslateStr2Hex(const std::string& sAddr)
 	{
 		in_addr hexAddr;
 		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
@@ -153,110 +160,26 @@ namespace Win32Util{ namespace WfpUtil{
 		vecFwpConditions.push_back(fwpCondition);
 	}
 
-	//IPアドレス文字列が空文字列の場合はポートのみでフィルター
-	//ポートが0の場合はIPアドレスのみでフィルター
-	//両方該当する場合はフィルターの追加をしない
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
-	{
-		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
-
-		if (sAddr == "" && port == 0)
-		{
-			return;
-		}
-
-		FWPM_FILTER0 fwpFilter = { 0 };
-		std::vector<FWPM_FILTER_CONDITION0> vecFwpConditions;
-
-		fwpFilter.subLayerKey = m_subLayerGUID;
-		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-		fwpFilter.weight.type = FWP_EMPTY;
-		fwpFilter.displayData.name = const_cast<WCHAR*>(L"IPv4Permit");
-		fwpFilter.displayData.description = const_cast<WCHAR*>(L"Filter for IPv4");
-
-		//許可 or 遮断を指定
-		fwpFilter.action.type = action == WFP_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
-
-		FILTER_COND_INFO filterCondition;
-
-		//IPアドレス文字列が空文字列の場合は、ポートのみをフィルター条件に追加
-		if (sAddr != "")
-		{
-			filterCondition.hexAddr = TranslateStr2Hex(sAddr);
-			filterCondition.mask = dwMask;
-			SetupConditions(vecFwpConditions, filterCondition.hexAddr, filterCondition.mask);
-			BOOST_LOG_TRIVIAL(trace) << "TranslateStr2Hex succeeded";
-		}
-
-		//ポートが0の場合は、IPアドレスのみをフィルター条件に追加
-		if (port != 0)
-		{
-			filterCondition.port = port;
-			SetupConditions(vecFwpConditions, filterCondition.port);
-		}
-
-		fwpFilter.numFilterConditions = vecFwpConditions.size();
-		fwpFilter.filterCondition = vecFwpConditions.data();
-
-		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
-		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterCondition.filterID);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
-		m_vecConditions.push_back(filterCondition);
-	}
-
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol)
-	{
-		UINT16 wPort = GetPortByServ(sProtocol);	
-		AddFilter(action, sAddr, dwMask, wPort);
-	}
-
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, UINT16 port)
-	{
-		AddFilter(action, "", 0xffffffff, port);
-	}
-
 	void CFirewall::Impl::RemoveAllFilters()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "RemoveAllFilters begins";
 		DWORD dwRet = ERROR_BAD_COMMAND;
-		for (auto& elem : m_vecConditions)
+		for (auto& elem : m_vecFilterId)
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
-			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.filterID);
+			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
 			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
 		}
 	}
 
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port)
-	{
-		AddFilter(action, sAddr, 0xffffffff, port);
-	}
-
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol)
-	{
-		AddFilter(action, sAddr, 0xffffffff, sProtocol);
-	}
-
-	void CFirewall::Impl::AddFilter(WFP_ACTION action, std::string sAddrOrProtocol)
-	{
-		//sAddrOrProtocolをまずはプロトコルとして解釈し、ポートに変換する
-		//解決できなければアドレスとして解釈する
-
-		UINT16 wPort = GetPortByServ(sAddrOrProtocol);
-		if (wPort == 0)
-		{
-			AddFilter(action, sAddrOrProtocol, 0xffffffff, 0);
-		}
-		else
-		{
-			AddFilter(action, wPort);
-		}
-	}
-
-	UINT16 CFirewall::Impl::GetPortByServ(std::string sService)
+	UINT16 CFirewall::Impl::GetPortByServ(const std::string& sService)
 	{
 		servent* pServEnt = getservbyname(sService.c_str(), nullptr);
-		return pServEnt ? ntohs(pServEnt->s_port):0;
+		if (pServEnt == nullptr)
+		{
+			throw std::runtime_error("protocol not found");
+		}
+		return ntohs(pServEnt->s_port);
 	}
 
 	void CFirewall::Impl::RemoveFilter(int index)
@@ -265,10 +188,60 @@ namespace Win32Util{ namespace WfpUtil{
 		DWORD dwRet = ERROR_BAD_COMMAND;
 
 		BOOST_LOG_TRIVIAL(trace) << "Removing filter";
-		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecConditions.at(index).filterID);
+		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index));
 		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
-		m_vecConditions.erase(m_vecConditions.cbegin() + index);
+		m_vecFilterId.erase(m_vecFilterId.cbegin() + index);
 	}
+
+	void CFirewall::Impl::AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask)
+	{
+		UINT32 hexAddr = TranslateStr2Hex(sIpAddr);
+		SetupConditions(m_vecConditions, hexAddr, dwMask);
+		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sIpAddr;
+	}
+
+	void CFirewall::Impl::AddIpAddrCondition(const std::string& sIpAddr)
+	{
+		AddIpAddrCondition(sIpAddr, 0xffffffff);
+	}
+
+	void CFirewall::Impl::AddPortCondition(UINT16 wPort)
+	{
+		SetupConditions(m_vecConditions, wPort);
+		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << wPort;
+	}
+
+	void CFirewall::Impl::AddPortCondition(const std::string& sProtocol)
+	{
+		UINT16 wPort = GetPortByServ(sProtocol);
+		AddPortCondition(wPort);
+	}
+
+	void CFirewall::Impl::AddFilter(FW_ACTION action)
+	{
+		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
+		FWPM_FILTER0 fwpFilter = { 0 };
+		fwpFilter.subLayerKey = m_subLayerGUID;
+		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+
+		fwpFilter.weight.type = FWP_EMPTY;
+
+		fwpFilter.displayData.name = const_cast<WCHAR*>(L"IPv4Permit");
+		fwpFilter.displayData.description = const_cast<WCHAR*>(L"Filter for IPv4");
+
+		fwpFilter.action.type = action == FW_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
+
+		fwpFilter.numFilterConditions = m_vecConditions.size();
+		fwpFilter.filterCondition = m_vecConditions.data();
+
+		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
+		UINT64 filterId = 0;
+		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		m_vecFilterId.push_back(filterId);
+		m_vecConditions.clear();
+	}
+
 	CFirewall::CFirewall(): pimpl(std::make_shared<Impl>())
 	{
 	}
@@ -278,39 +251,34 @@ namespace Win32Util{ namespace WfpUtil{
 		pimpl->close();
 	}
 
-	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port)
-	{
-		pimpl->AddFilter(action, sAddr, dwMask, port);
-	}
-
-	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol)
-	{
-		pimpl->AddFilter(action, sAddr, dwMask, sProtocol);
-	}
-
-	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port)
-	{
-		pimpl->AddFilter(action, sAddr, port);
-	}
-
-	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol)
-	{
-		pimpl->AddFilter(action, sAddr, sProtocol);
-	}
-
-	void CFirewall::AddFilter(WFP_ACTION action, std::string sAddr)
-	{
-		pimpl->AddFilter(action, sAddr);
-	}
-
-	void CFirewall::AddFilter(WFP_ACTION action, UINT16 port)
-	{
-		pimpl->AddFilter(action, port);
-	}
-
 	void CFirewall::RemoveFilter(int index)
 	{
 		pimpl->RemoveFilter(index);
+	}
+
+	void CFirewall::AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask)
+	{
+		pimpl->AddIpAddrCondition(sIpAddr, dwMask);
+	}
+
+	void CFirewall::AddIpAddrCondition(const std::string& sIpAddr)
+	{
+		pimpl->AddIpAddrCondition(sIpAddr);
+	}
+
+	void CFirewall::AddPortCondition(UINT16 wPort)
+	{
+		pimpl->AddPortCondition(wPort);
+	}
+
+	void CFirewall::AddPortCondition(const std::string& sProtocol)
+	{
+		pimpl->AddPortCondition(sProtocol);
+	}
+
+	void CFirewall::AddFilter(FW_ACTION action)
+	{
+		pimpl->AddFilter(action);
 	}
 
 }	//namespace WfpUtil

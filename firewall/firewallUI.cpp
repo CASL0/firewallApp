@@ -28,7 +28,7 @@ static const std::wstring STRING_TEXT_ACTION = L"アクション";
 static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
 
-static std::shared_ptr<CFirewall> pFirewall = std::make_shared<CFirewall>();
+static std::shared_ptr<CFirewall> pFirewall = nullptr;
 
 INT_PTR CALLBACK DialogFunc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -99,6 +99,33 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             keywords::format =
             "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
         );
+
+        try
+        {
+            pFirewall = std::make_shared<CFirewall>();
+        }
+
+        //GetLastError()の捕捉
+        catch (CWin32Exception<DWORD>& e)
+        {
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
+            break;
+        }
+
+        //HRESULTの捕捉
+        catch (CWin32Exception<HRESULT>& e)
+        {
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
+            break;
+        }
+
+        //WSAGetLastError()の捕捉
+        catch (CWin32Exception<int>& e)
+        {
+            BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
+            break;
+        }
+
         return (INT_PTR)TRUE;
     case WM_CLOSE:
         try
@@ -134,14 +161,9 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 
             try
             {
-                pFirewall->AddFilter(iCurSel == 0 ? WFP_ACTION_PERMIT : WFP_ACTION_BLOCK, sIpAddr.data(), sProtocol.data());
-            }
-
-            //GetLastError()の捕捉
-            catch (CWin32Exception<DWORD>& e)
-            {
-                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
-                break;
+                pFirewall->AddIpAddrCondition(sIpAddr.data());
+                pFirewall->AddPortCondition(sProtocol.data());
+                pFirewall->AddFilter(iCurSel == 0 ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
             }
 
             //HRESULTの捕捉
@@ -151,12 +173,12 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
                 break;
             }
 
-            //WSAGetLastError()の捕捉
-            catch (CWin32Exception<int>& e)
+            catch (std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 break;
             }
+
             std::wstringstream ssListItem;
             ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 

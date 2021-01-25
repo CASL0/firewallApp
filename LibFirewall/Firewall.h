@@ -5,10 +5,10 @@
 
 namespace Win32Util{ namespace WfpUtil{
 
-	enum WFP_ACTION
+	enum FW_ACTION
 	{
-		WFP_ACTION_PERMIT = 0,
-		WFP_ACTION_BLOCK,
+		FW_ACTION_PERMIT = 0,
+		FW_ACTION_BLOCK,
 	};
 
 	class CFirewall
@@ -21,13 +21,12 @@ namespace Win32Util{ namespace WfpUtil{
 		CFirewall();
 		~CFirewall() = default;
 		void close();
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, UINT16 port);
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT32 dwMask, std::string sProtocol);
-		void AddFilter(WFP_ACTION action, std::string sAddr, UINT16 port);
-		void AddFilter(WFP_ACTION action, std::string sAddr, std::string sProtocol);
-		void AddFilter(WFP_ACTION action, std::string sAddrOrProtocol);
-		void AddFilter(WFP_ACTION action, UINT16 port);
 		void RemoveFilter(int index);
+		void AddIpAddrCondition(const std::string& sIpAddr);
+		void AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask);
+		void AddPortCondition(UINT16 wPort);
+		void AddPortCondition(const std::string& sProtocol);
+		void AddFilter(FW_ACTION action);
 
 	};
 }}
