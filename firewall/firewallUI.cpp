@@ -25,6 +25,10 @@ static const std::wstring STRING_COMBO[] = { L"許可",L"遮断" };
 static const std::wstring STRING_TEXT_ADDR = L"IPアドレス";
 static const std::wstring STRING_TEXT_PROTOCOL = L"プロトコル";
 static const std::wstring STRING_TEXT_ACTION = L"アクション";
+static const std::wstring STRING_TEXT_PORT = L"ポート番号";
+static const std::wstring STRING_TEXT_FQDN = L"FQDN";
+static const std::wstring STRING_TEXT_URL = L"URL";
+static const std::wstring STRING_TEXT_PROCESS = L"プロセス";
 static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
 
@@ -53,11 +57,12 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     static HWND hWndButtonDel = nullptr;
     static HWND hWndEditAddr = nullptr;
     static HWND hWndEditProtocol = nullptr;
+    static HWND hWndEditPort = nullptr;
+    static HWND hWndEditFqdn = nullptr;
+    static HWND hWndEditUrl = nullptr;
+    static HWND hWndEditProcess = nullptr;
     static HWND hWndList = nullptr;
     static HWND hWndComboAction = nullptr;
-    static HWND hWndTextAddr = nullptr;
-    static HWND hWndTextProtocol = nullptr;
-    static HWND hWndTextAction = nullptr;
 
     switch (message)
     {
@@ -65,33 +70,50 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 
         //UIパーツの設定
 
-        //「追加」ボタン
-        hWndButtonAdd = GetDlgItem(hWndDlg, IDC_BUTTON_ADD);
-        SetWindowText(hWndButtonAdd, STRING_BTN_ADD.c_str());
+        {
+            //「追加」ボタン
+            hWndButtonAdd = GetDlgItem(hWndDlg, IDC_BUTTON_ADD);
+            SetWindowText(hWndButtonAdd, STRING_BTN_ADD.c_str());
 
-        //「削除」ボタン
-        hWndButtonDel = GetDlgItem(hWndDlg, IDC_BUTTON_DEL);
-        SetWindowText(hWndButtonDel, STRING_BTN_DEL.c_str());
+            //「削除」ボタン
+            hWndButtonDel = GetDlgItem(hWndDlg, IDC_BUTTON_DEL);
+            SetWindowText(hWndButtonDel, STRING_BTN_DEL.c_str());
 
-        //IPアドレス入力フォーム
-        hWndEditAddr = GetDlgItem(hWndDlg, IDC_IPADDRESS);
+            //IPアドレス入力フォーム
+            hWndEditAddr = GetDlgItem(hWndDlg, IDC_IPADDRESS);
 
-        //プロトコル入力フォーム
-        hWndEditProtocol = GetDlgItem(hWndDlg, IDC_EDIT_PROTOCOL);
+            //プロトコル入力フォーム
+            hWndEditProtocol = GetDlgItem(hWndDlg, IDC_EDIT_PROTOCOL);
 
-        //フィルター表示用リスト
-        hWndList = GetDlgItem(hWndDlg, IDC_LIST);
+            //ポート入力フォーム
+            hWndEditPort = GetDlgItem(hWndDlg, IDC_EDIT_PORT);
 
-        //アクションコンボボックス
-        hWndComboAction = GetDlgItem(hWndDlg, IDC_COMBO);
-        SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[0].c_str());
-        SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[1].c_str());
-        SendMessage(hWndComboAction, CB_SETCURSEL, INIT_COMBO_SEL, 0);
+            //FQDN入力フォーム
+            hWndEditFqdn = GetDlgItem(hWndDlg, IDC_EDIT_FQDN);
 
-        //スタティックテキスト類
-        SetWindowText(hWndTextAddr, STRING_TEXT_ADDR.c_str());
-        SetWindowText(hWndTextProtocol, STRING_TEXT_PROTOCOL.c_str());
-        SetWindowText(hWndTextAction, STRING_TEXT_ACTION.c_str());
+            //URL入力フォーム
+            hWndEditUrl = GetDlgItem(hWndDlg, IDC_EDIT_URL);
+
+            //プロセス入力フォーム
+            hWndEditProcess = GetDlgItem(hWndDlg, IDC_EDIT_PROCESS);
+
+            //フィルター表示用リスト
+            hWndList = GetDlgItem(hWndDlg, IDC_LIST);
+
+            //アクションコンボボックス
+            hWndComboAction = GetDlgItem(hWndDlg, IDC_COMBO);
+            SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[0].c_str());
+            SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[1].c_str());
+            SendMessage(hWndComboAction, CB_SETCURSEL, INIT_COMBO_SEL, 0);
+
+            //スタティックテキスト類
+            SetDlgItemText(hWndDlg, IDC_TEXT_ADDR    , STRING_TEXT_ADDR.c_str());
+            SetDlgItemText(hWndDlg, IDC_TEXT_PORT    , STRING_TEXT_PORT.c_str());
+            SetDlgItemText(hWndDlg, IDC_TEXT_FQDN    , STRING_TEXT_FQDN.c_str());
+            SetDlgItemText(hWndDlg, IDC_TEXT_PROTOCOL, STRING_TEXT_PROTOCOL.c_str());
+            SetDlgItemText(hWndDlg, IDC_TEXT_URL     , STRING_TEXT_URL.c_str());
+            SetDlgItemText(hWndDlg, IDC_TEXT_PROCESS , STRING_TEXT_PROCESS.c_str());
+        }
 
         logging::add_common_attributes();
         logging::add_file_log(
@@ -104,25 +126,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             pFirewall = std::make_shared<CFirewall>();
         }
-
-        //GetLastError()の捕捉
-        catch (CWin32Exception<DWORD>& e)
+        catch (std::runtime_error& e)
         {
             BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
-            break;
-        }
-
-        //HRESULTの捕捉
-        catch (CWin32Exception<HRESULT>& e)
-        {
-            BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
-            break;
-        }
-
-        //WSAGetLastError()の捕捉
-        catch (CWin32Exception<int>& e)
-        {
-            BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
+            MessageBox(hWndDlg, L"ファイアウォールの初期化に失敗しました", L"", MB_ICONERROR | MB_OK);
+            exit(1);
             break;
         }
 
@@ -132,17 +140,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             pFirewall->close();
         }
-        //HRESULTの捕捉
-        catch (CWin32Exception<HRESULT>& e)
+        catch (std::runtime_error& e)
         {
             BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed with error: " << e.what();
-            break;
-        }
-
-        //WSAGetLastError()の捕捉
-        catch (CWin32Exception<int>& e)
-        {
-            BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed with error: " << e.what();
+            MessageBox(hWndDlg, L"ファイアウォールの終了処理に失敗しました", L"", MB_ICONERROR | MB_OK);
+            exit(1);
             break;
         }
         EndDialog(hWndDlg, 0);
@@ -165,17 +167,10 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
                 pFirewall->AddPortCondition(sProtocol.data());
                 pFirewall->AddFilter(iCurSel == 0 ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
             }
-
-            //HRESULTの捕捉
-            catch (CWin32Exception<HRESULT>& e)
-            {
-                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
-                break;
-            }
-
             catch (std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
+                MessageBox(hWndDlg, L"フィルターの追加に失敗しました", L"", MB_ICONERROR | MB_OK);
                 break;
             }
 
@@ -208,9 +203,10 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 pFirewall->RemoveFilter(idx);
             }
-            catch (CWin32Exception<HRESULT>& e)
+            catch (std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::RemovingFilter failed with error: " << e.what();
+                MessageBox(hWndDlg, L"フィルターの削除に失敗しました", L"", MB_ICONERROR | MB_OK);
                 break;
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
