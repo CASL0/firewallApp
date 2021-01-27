@@ -1,6 +1,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
+#include <WinInet.h>
 #include <vector>
 #include <fwpmu.h>
 #include <memory>
@@ -12,6 +13,7 @@
 #pragma comment(lib, "fwpuclnt.lib")
 #pragma comment(lib, "Rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "wininet.lib")
 
 #pragma warning(disable : 4996)
 
@@ -42,6 +44,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddPortCondition(UINT16 wPort);
 		void AddPortCondition(const std::string& sProtocol);
 		void AddFqdnCondition(const std::string& sFqdn);
+		void AddUrlCondition(const std::string& sUrl);
 		void AddFilter(FW_ACTION action);
 		
 		//フィルターの項番を指定して削除する
@@ -53,6 +56,11 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddSubLayer();
 		void RemoveSubLayer();
 		void RemoveAllFilters();
+
+		//[in] sUrl: URL
+		//[out] sFqdn: FQDN, sProtocol: プロトコル
+		//パースに失敗した場合Win32Exceptionをthrowする(クライアントコードでは例外を捕捉する)
+		void ParseUrl(const std::string& sUrl, std::string& sFqdn, std::string& sProtocol);
 
 		//ホスト名を解決する
 		//存在しない場合Win32Exceptionをthrowする(クライアントコードでは例外を捕捉する)
@@ -178,8 +186,35 @@ namespace Win32Util{ namespace WfpUtil{
 		}
 	}
 
+	void CFirewall::Impl::ParseUrl(const std::string& sUrl, std::string& sFqdn, std::string& sProtocol)
+	{
+		BOOST_LOG_TRIVIAL(trace) << "URL: " << sUrl;
+		URL_COMPONENTSA urlComponents = { 0 };
+
+		static const int URL_BUFFER_SIZE = 1024;
+		std::vector<CHAR> host(URL_BUFFER_SIZE);
+		std::vector<CHAR> scheme(URL_BUFFER_SIZE);
+
+		urlComponents.dwStructSize     = sizeof(URL_COMPONENTSA);
+		urlComponents.lpszHostName     = host.data();
+		urlComponents.lpszScheme       = scheme.data();
+		urlComponents.dwHostNameLength = URL_BUFFER_SIZE;
+		urlComponents.dwSchemeLength   = URL_BUFFER_SIZE;
+
+		bool bRet = InternetCrackUrlA(sUrl.c_str(), sUrl.length(), 0, &urlComponents);
+		ThrowLastError(bRet == false, "InternetCrackUrl failed");
+
+		BOOST_LOG_TRIVIAL(trace) << "InternetCrackUrl succeeded";
+		host.resize(urlComponents.dwHostNameLength);
+		scheme.resize(urlComponents.dwSchemeLength);
+
+		sFqdn     = std::string(host.begin(), host.end());
+		sProtocol = std::string(scheme.begin(), scheme.end());
+	}
+
 	std::string CFirewall::Impl::GetIpAddrByFqdn(const std::string& sFqdn)
 	{
+		BOOST_LOG_TRIVIAL(trace) << "FQDN: " << sFqdn;
 		addrinfo hints = { 0 };
 		hints.ai_family = AF_INET;
 		hints.ai_socktype = SOCK_STREAM;
@@ -247,6 +282,16 @@ namespace Win32Util{ namespace WfpUtil{
 		AddIpAddrCondition(sIpAddr);
 	}
 
+	void CFirewall::Impl::AddUrlCondition(const std::string& sUrl)
+	{
+		std::string sFqdn;
+		std::string sProtocol;
+		ParseUrl(sUrl, sFqdn, sProtocol);
+
+		AddFqdnCondition(sFqdn);
+		AddPortCondition(sProtocol);
+	}
+
 	void CFirewall::Impl::AddFilter(FW_ACTION action)
 	{
 		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
@@ -310,6 +355,12 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		pimpl->AddFqdnCondition(sFqdn);
 	}
+
+	void CFirewall::AddUrlCondition(const std::string& sUrl)
+	{
+		pimpl->AddUrlCondition(sUrl);
+	}
+
 	void CFirewall::AddFilter(FW_ACTION action)
 	{
 		pimpl->AddFilter(action);
