@@ -15,7 +15,6 @@
 #define IDC_EDIT_FQDN                   1010
 #define IDC_EDIT_PORT                   1011
 #define IDC_EDIT_URL                    1012
-#define IDC_EDIT4                       1013
 #define IDC_EDIT_PROCESS                1013
 #define IDC_TEXT_PORT                   1014
 #define IDC_TEXT_FQDN                   1015

@@ -26,6 +26,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask);
 		void AddPortCondition(UINT16 wPort);
 		void AddPortCondition(const std::string& sProtocol);
+		void AddFqdnCondition(const std::string& sFqdn);
 		void AddFilter(FW_ACTION action);
 
 	};

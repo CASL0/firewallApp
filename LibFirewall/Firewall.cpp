@@ -13,6 +13,8 @@
 #pragma comment(lib, "Rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
 
+#pragma warning(disable : 4996)
+
 namespace Win32Util{ namespace WfpUtil{
 	typedef struct
 	{
@@ -39,7 +41,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask);
 		void AddPortCondition(UINT16 wPort);
 		void AddPortCondition(const std::string& sProtocol);
-
+		void AddFqdnCondition(const std::string& sFqdn);
 		void AddFilter(FW_ACTION action);
 		
 		//フィルターの項番を指定して削除する
@@ -51,6 +53,10 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddSubLayer();
 		void RemoveSubLayer();
 		void RemoveAllFilters();
+
+		//ホスト名を解決する
+		//存在しない場合Win32Exceptionをthrowする(クライアントコードでは例外を捕捉する)
+		std::string GetIpAddrByFqdn(const std::string& sFqdn);
 
 		//サービス名を解決する(etc/servicesからの解決)
 		//存在しない場合runtime_errorをthrowする(クライアントコードでは例外を捕捉する)
@@ -172,6 +178,24 @@ namespace Win32Util{ namespace WfpUtil{
 		}
 	}
 
+	std::string CFirewall::Impl::GetIpAddrByFqdn(const std::string& sFqdn)
+	{
+		addrinfo hints = { 0 };
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+
+		addrinfo* pAddrInfo = nullptr;
+		int iRet = getaddrinfo(sFqdn.c_str(), nullptr, &hints, &pAddrInfo);
+		ThrowWsaError(iRet != 0, "getaddrinfo failed");
+
+		BOOST_LOG_TRIVIAL(trace) << "getaddrinfo succeeded";
+
+		IN_ADDR addr = { 0 };
+		addr.S_un = ((SOCKADDR_IN*)(pAddrInfo->ai_addr))->sin_addr.S_un;
+		freeaddrinfo(pAddrInfo);
+		return std::string(inet_ntoa(addr));
+	}
+
 	UINT16 CFirewall::Impl::GetPortByServ(const std::string& sService)
 	{
 		servent* pServEnt = getservbyname(sService.c_str(), nullptr);
@@ -215,6 +239,12 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		UINT16 wPort = GetPortByServ(sProtocol);
 		AddPortCondition(wPort);
+	}
+
+	void CFirewall::Impl::AddFqdnCondition(const std::string& sFqdn)
+	{
+		std::string sIpAddr = GetIpAddrByFqdn(sFqdn);
+		AddIpAddrCondition(sIpAddr);
 	}
 
 	void CFirewall::Impl::AddFilter(FW_ACTION action)
@@ -276,6 +306,10 @@ namespace Win32Util{ namespace WfpUtil{
 		pimpl->AddPortCondition(sProtocol);
 	}
 
+	void CFirewall::AddFqdnCondition(const std::string& sFqdn)
+	{
+		pimpl->AddFqdnCondition(sFqdn);
+	}
 	void CFirewall::AddFilter(FW_ACTION action)
 	{
 		pimpl->AddFilter(action);
