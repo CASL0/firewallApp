@@ -1,7 +1,10 @@
 #include "Firewall.h"
 #include "Win32Exception.h"
 #include "resource.h"
+#include "uiConfigure.h"
 #include <Windows.h>
+#include <string>
+#include <vector>
 #include <sstream>
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/debug_output_backend.hpp>
@@ -19,17 +22,6 @@ namespace expr = boost::log::expressions;
 namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
 
-static const std::wstring STRING_BTN_ADD = L"追加";
-static const std::wstring STRING_BTN_DEL = L"削除";
-static const std::wstring STRING_COMBO[] = { L"許可",L"遮断" };
-static const std::wstring STRING_TEXT_ADDR = L"IPアドレス";
-static const std::wstring STRING_TEXT_PROTOCOL = L"プロトコル";
-static const std::wstring STRING_TEXT_ACTION = L"アクション";
-static const std::wstring STRING_TEXT_PORT = L"ポート番号";
-static const std::wstring STRING_TEXT_FQDN = L"FQDN";
-static const std::wstring STRING_TEXT_URL = L"URL";
-static const std::wstring STRING_TEXT_PROCESS = L"プロセス";
-static DWORD INIT_COMBO_SEL = 0;
 static const DWORD LENGTH_BUFFER = 1024;
 
 static std::shared_ptr<CFirewall> pFirewall = nullptr;
@@ -53,16 +45,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 {
     UNREFERENCED_PARAMETER(lParam);
 
-    static HWND hWndButtonAdd = nullptr;
-    static HWND hWndButtonDel = nullptr;
-    static HWND hWndEditAddr = nullptr;
-    static HWND hWndEditProtocol = nullptr;
-    static HWND hWndEditPort = nullptr;
-    static HWND hWndEditFqdn = nullptr;
-    static HWND hWndEditUrl = nullptr;
-    static HWND hWndEditProcess = nullptr;
     static HWND hWndList = nullptr;
     static HWND hWndComboAction = nullptr;
+    static std::map<std::string, HWND> hWndButton;
+    static std::map<std::string, HWND> hWndEdit;
+    static std::map<std::string, HWND> hWndCheckBox;
 
     switch (message)
     {
@@ -71,48 +58,13 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         //UIパーツの設定
 
         {
-            //「追加」ボタン
-            hWndButtonAdd = GetDlgItem(hWndDlg, IDC_BUTTON_ADD);
-            SetWindowText(hWndButtonAdd, STRING_BTN_ADD.c_str());
-
-            //「削除」ボタン
-            hWndButtonDel = GetDlgItem(hWndDlg, IDC_BUTTON_DEL);
-            SetWindowText(hWndButtonDel, STRING_BTN_DEL.c_str());
-
-            //IPアドレス入力フォーム
-            hWndEditAddr = GetDlgItem(hWndDlg, IDC_IPADDRESS);
-
-            //プロトコル入力フォーム
-            hWndEditProtocol = GetDlgItem(hWndDlg, IDC_EDIT_PROTOCOL);
-
-            //ポート入力フォーム
-            hWndEditPort = GetDlgItem(hWndDlg, IDC_EDIT_PORT);
-
-            //FQDN入力フォーム
-            hWndEditFqdn = GetDlgItem(hWndDlg, IDC_EDIT_FQDN);
-
-            //URL入力フォーム
-            hWndEditUrl = GetDlgItem(hWndDlg, IDC_EDIT_URL);
-
-            //プロセス入力フォーム
-            hWndEditProcess = GetDlgItem(hWndDlg, IDC_EDIT_PROCESS);
-
             //フィルター表示用リスト
             hWndList = GetDlgItem(hWndDlg, IDC_LIST);
 
-            //アクションコンボボックス
-            hWndComboAction = GetDlgItem(hWndDlg, IDC_COMBO);
-            SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[0].c_str());
-            SendMessage(hWndComboAction, CB_ADDSTRING, 0, (LPARAM)STRING_COMBO[1].c_str());
-            SendMessage(hWndComboAction, CB_SETCURSEL, INIT_COMBO_SEL, 0);
-
-            //スタティックテキスト類
-            SetDlgItemText(hWndDlg, IDC_TEXT_ADDR    , STRING_TEXT_ADDR.c_str());
-            SetDlgItemText(hWndDlg, IDC_TEXT_PORT    , STRING_TEXT_PORT.c_str());
-            SetDlgItemText(hWndDlg, IDC_TEXT_FQDN    , STRING_TEXT_FQDN.c_str());
-            SetDlgItemText(hWndDlg, IDC_TEXT_PROTOCOL, STRING_TEXT_PROTOCOL.c_str());
-            SetDlgItemText(hWndDlg, IDC_TEXT_URL     , STRING_TEXT_URL.c_str());
-            SetDlgItemText(hWndDlg, IDC_TEXT_PROCESS , STRING_TEXT_PROCESS.c_str());
+            InitButton(hWndDlg  , hWndButton);
+            InitEdit(hWndDlg    , hWndEdit);
+            InitCheckBox(hWndDlg, hWndCheckBox);
+            InitComboBox(hWndDlg, hWndComboAction);
         }
 
         logging::add_common_attributes();
@@ -155,17 +107,12 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
         case IDC_BUTTON_ADD:
         {
-            std::vector<CHAR> sIpAddr(LENGTH_BUFFER);
-            std::vector<CHAR> sProtocol(LENGTH_BUFFER);
-            GetWindowTextA(hWndEditAddr, sIpAddr.data(), LENGTH_BUFFER);
-            GetWindowTextA(hWndEditProtocol, sProtocol.data(), LENGTH_BUFFER);
             int iCurSel = (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
 
             try
             {
-                pFirewall->AddIpAddrCondition(sIpAddr.data());
-                pFirewall->AddPortCondition(sProtocol.data());
-                pFirewall->AddFilter(iCurSel == 0 ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
+                //pFirewall->AddUrlCondition(sUrl.data());
+                //pFirewall->AddFilter(iCurSel == 0 ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
             }
             catch (std::runtime_error& e)
             {
@@ -175,13 +122,13 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             }
 
             std::wstringstream ssListItem;
-            ssListItem << sIpAddr.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
+            //ssListItem << sUrl.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
 
             //ListBoxの末尾に追加(第3引数に-1を指定)
             SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)ssListItem.str().c_str());
 
-            SetWindowText(hWndEditAddr, L"");
-            SetWindowText(hWndEditProtocol, L"");
+            //SetWindowText(hWndEditAddr, L"");
+            //SetWindowText(hWndEditProtocol, L"");
             return (INT_PTR)TRUE;
         }
         case IDC_BUTTON_DEL:

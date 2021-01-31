@@ -145,9 +145,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="firewallUI.cpp" />
+    <ClCompile Include="uiConfigure.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
+    <ClInclude Include="uiConfigure.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="firewall.rc" />
