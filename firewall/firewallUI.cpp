@@ -3,8 +3,8 @@
 #include "resource.h"
 #include "uiConfigure.h"
 #include <Windows.h>
+#include <algorithm>
 #include <string>
-#include <vector>
 #include <sstream>
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/debug_output_backend.hpp>
@@ -21,6 +21,11 @@ namespace logging = boost::log;
 namespace expr = boost::log::expressions;
 namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
+
+#define FWM_DISABLE_FORM (WM_APP + 1)
+#define FWM_CHECKBOX     (FWM_DISABLE_FORM + 1)
+#define FWM_IP_CHECK     (FWM_CHECKBOX + 1)
+#define FWM_PORT_CHECK   (FWM_IP_CHECK + 1)
 
 static const DWORD LENGTH_BUFFER = 1024;
 
@@ -50,6 +55,18 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     static std::map<std::string, HWND> hWndButton;
     static std::map<std::string, HWND> hWndEdit;
     static std::map<std::string, HWND> hWndCheckBox;
+
+    static const std::vector<std::string> IpKey = {
+        "addr",
+        "fqdn",
+        "url",
+    };
+
+    static const std::vector<std::string> PortKey = {
+        "port",
+        "protocol",
+        "url",
+    };
 
     switch (message)
     {
@@ -101,7 +118,63 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         }
         EndDialog(hWndDlg, 0);
         return (INT_PTR)TRUE;
+    case FWM_IP_CHECK:
+    {
+        LPCSTR sKey = (LPCSTR)wParam;
+        for (const auto& elem : IpKey)
+        {
+            if (sKey != elem)
+            {
+                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.c_str(), 0);
+            }
+        }
+        return (INT_PTR)TRUE;
+    }
+    case FWM_PORT_CHECK:
+    {
+        LPCSTR sKey = (LPCSTR)wParam;
+        for (const auto& elem : PortKey)
+        {
+            if (sKey != elem)
+            {
+                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.c_str(), 0);
+            }
+        }
+        return (INT_PTR)TRUE;
+    }
+    case FWM_DISABLE_FORM:
+    {
+        LPCSTR sKeky = (LPCSTR)wParam;
+        SendMessage(hWndCheckBox[sKeky], BM_SETCHECK   , BST_UNCHECKED, 0);
+        SendMessage(hWndEdit[sKeky]    , EM_SETREADONLY, TRUE         , 0);
+        return (INT_PTR)TRUE;
+    }
+    case FWM_CHECKBOX:
+    {
+        LPCSTR sKey = (LPCSTR)wParam;
+        bool isChecked = BST_CHECKED == SendMessage(hWndCheckBox[sKey], BM_GETCHECK, 0, 0);
 
+        //チェックを外した場合はフォームを無効化する
+        if (!isChecked)
+        {
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, wParam, 0);
+            return (INT_PTR)TRUE;
+        }
+
+        SendMessage(hWndEdit[sKey], EM_SETREADONLY, FALSE, 0);
+        bool isIpCheck = IpKey.end() != std::find(IpKey.begin(), IpKey.end(), sKey);
+        if (isIpCheck)
+        {
+            SendMessage(hWndDlg, FWM_IP_CHECK, wParam, 0);
+        }
+
+        bool isPortCheck = PortKey.end() != std::find(PortKey.begin(), PortKey.end(), sKey);
+        if (isPortCheck)
+        {
+            SendMessage(hWndDlg, FWM_PORT_CHECK, wParam, 0);
+        }
+        return (INT_PTR)TRUE;
+    }
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
@@ -134,7 +207,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         case IDC_BUTTON_DEL:
         {
             //未選択の場合は-1が返ってくる
-            int idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
+            LRESULT idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
             if (idx == -1)
             {
                 return (INT_PTR)TRUE;
@@ -158,6 +231,31 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
             return (INT_PTR)TRUE;        
+        }
+        case IDC_CHECK_ADDR:
+        {
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"addr", 0);
+            return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_FQDN:
+        {
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"fqdn", 0);
+            return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_PORT:
+        {
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"port", 0);
+            return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_PROTOCOL:
+        {
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"protocol", 0);
+            return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_URL:
+        {
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"url", 0);
+            return (INT_PTR)TRUE;
         }
         }   //switch (LOWORD(wParam))
         break;
