@@ -45,6 +45,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddPortCondition(const std::string& sProtocol);
 		void AddFqdnCondition(const std::string& sFqdn);
 		void AddUrlCondition(const std::string& sUrl);
+		void AddProcessCondition(const std::string& sPathToApp);
 		void AddFilter(FW_ACTION action);
 		
 		//フィルターの項番を指定して削除する
@@ -74,8 +75,11 @@ namespace Win32Util{ namespace WfpUtil{
 		//入力例："192.168.0.1"
 		UINT32 TranslateStr2Hex(const std::string& sAddr);
 
+		std::wstring AstrToWstr(const std::string& src);
+
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort);
+		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::string& sPathToApp);
 	};
 
 	CFirewall::Impl::Impl() :
@@ -172,6 +176,29 @@ namespace Win32Util{ namespace WfpUtil{
 		fwpCondition.conditionValue.type = FWP_UINT16;
 		fwpCondition.conditionValue.uint16 = wPort;
 		vecFwpConditions.push_back(fwpCondition);
+	}
+
+	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::string& sPathToApp)
+	{
+		FWP_BYTE_BLOB* appBlob = nullptr;
+		DWORD dwRet = FwpmGetAppIdFromFileName0(AstrToWstr(sPathToApp).c_str(), &appBlob);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmGetAppIdFromFileName0 failed");
+		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
+		fwpCondition.fieldKey = FWPM_CONDITION_ALE_APP_ID;
+		fwpCondition.matchType = FWP_MATCH_EQUAL;
+		fwpCondition.conditionValue.type = FWP_BYTE_BLOB_TYPE;
+		fwpCondition.conditionValue.byteBlob = appBlob;
+		vecFwpConditions.push_back(fwpCondition);
+	}
+
+	std::wstring CFirewall::Impl::AstrToWstr(const std::string& src)
+	{
+		auto destSize = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, src.c_str(), -1, nullptr, 0);
+		std::vector<WCHAR> dest(destSize);
+		destSize = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, src.c_str(), -1, dest.data(), dest.size());
+		ThrowLastError(destSize == 0, "MultiByteToWideChar failed");
+		dest.resize(destSize);
+		return std::wstring(dest.begin(), dest.end());
 	}
 
 	void CFirewall::Impl::RemoveAllFilters()
@@ -292,6 +319,13 @@ namespace Win32Util{ namespace WfpUtil{
 		AddPortCondition(sProtocol);
 	}
 
+	void CFirewall::Impl::AddProcessCondition(const std::string& sPathToApp)
+	{
+		BOOST_LOG_TRIVIAL(trace) << "App: " << sPathToApp;
+		SetupConditions(m_vecConditions, sPathToApp);
+		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sPathToApp;
+	}
+
 	void CFirewall::Impl::AddFilter(FW_ACTION action)
 	{
 		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
@@ -359,6 +393,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddUrlCondition(const std::string& sUrl)
 	{
 		pimpl->AddUrlCondition(sUrl);
+	}
+
+	void CFirewall::AddProcessCondition(const std::string& sPathToApp)
+	{
+		pimpl->AddProcessCondition(sPathToApp);
 	}
 
 	void CFirewall::AddFilter(FW_ACTION action)

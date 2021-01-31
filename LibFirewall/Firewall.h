@@ -28,6 +28,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddPortCondition(const std::string& sProtocol);
 		void AddFqdnCondition(const std::string& sFqdn);
 		void AddUrlCondition(const std::string& sUrl);
+		void AddProcessCondition(const std::string& sPathToApp);
 		void AddFilter(FW_ACTION action);
 
 	};
