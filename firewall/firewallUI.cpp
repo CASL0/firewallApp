@@ -82,6 +82,17 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             InitEdit(hWndDlg    , hWndEdit);
             InitCheckBox(hWndDlg, hWndCheckBox);
             InitComboBox(hWndDlg, hWndComboAction);
+
+            //初期状態でチェック状態
+            SendMessage(hWndCheckBox["addr"]   , BM_SETCHECK, BST_CHECKED, 0);
+            SendMessage(hWndCheckBox["port"]   , BM_SETCHECK, BST_CHECKED, 0);
+            SendMessage(hWndCheckBox["process"], BM_SETCHECK, BST_CHECKED, 0);
+
+            //初期状態で無効化
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"fqdn"    , 0);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"protocol", 0);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"url"     , 0);
+
         }
 
         logging::add_common_attributes();
@@ -255,6 +266,15 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         case IDC_CHECK_URL:
         {
             SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"url", 0);
+            return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_PROCESS:
+        {
+            bool isChecked = BST_CHECKED == SendMessage(hWndCheckBox["process"], BM_GETCHECK, 0, 0);
+
+            //チェックを外した場合フォームを無効化する
+            SendMessage(hWndEdit["process"], EM_SETREADONLY, !isChecked, 0);
+            
             return (INT_PTR)TRUE;
         }
         }   //switch (LOWORD(wParam))
