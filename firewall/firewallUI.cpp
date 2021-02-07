@@ -93,12 +93,14 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 
         }
         
+        /*
         logging::add_common_attributes();
         logging::add_file_log(
             keywords::file_name = "firewall.log", // logを出力するファイル名
             keywords::format =
             "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
         );
+        */
 
         try
         {
