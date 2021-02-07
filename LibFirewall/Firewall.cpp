@@ -27,12 +27,18 @@ namespace Win32Util{ namespace WfpUtil{
 
 	} FILTER_COND_INFO;
 
+	typedef struct
+	{
+		UINT64 v4;
+		UINT64 v6;
+	} FILTER_ID;
+
 	class CFirewall::Impl
 	{
 	public:
 		HANDLE m_hEngine;
 		GUID m_subLayerGUID;
-		std::vector<UINT64> m_vecFilterId;
+		std::vector<FILTER_ID> m_vecFilterId;
 		std::vector<FWPM_FILTER_CONDITION0> m_vecConditions;
 	public:
 		Impl();
@@ -85,7 +91,7 @@ namespace Win32Util{ namespace WfpUtil{
 	CFirewall::Impl::Impl() :
 		m_hEngine(nullptr),
 		m_subLayerGUID({ 0 }),
-		m_vecFilterId(std::vector<UINT64>()), 
+		m_vecFilterId(std::vector<FILTER_ID>()), 
 		m_vecConditions(std::vector<FWPM_FILTER_CONDITION0>())
 	{
 		DWORD dwRet;
@@ -208,7 +214,10 @@ namespace Win32Util{ namespace WfpUtil{
 		for (auto& elem : m_vecFilterId)
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
-			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
+			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.v4);
+			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+
+			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.v6);
 			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
 		}
 	}
@@ -274,7 +283,9 @@ namespace Win32Util{ namespace WfpUtil{
 		DWORD dwRet = ERROR_BAD_COMMAND;
 
 		BOOST_LOG_TRIVIAL(trace) << "Removing filter";
-		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index));
+		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index).v4);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index).v6);
 		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
 		m_vecFilterId.erase(m_vecFilterId.cbegin() + index);
 	}
@@ -331,7 +342,6 @@ namespace Win32Util{ namespace WfpUtil{
 		BOOST_LOG_TRIVIAL(trace) << "AddFilter begins";
 		FWPM_FILTER0 fwpFilter = { 0 };
 		fwpFilter.subLayerKey = m_subLayerGUID;
-		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 
 		fwpFilter.weight.type = FWP_EMPTY;
 
@@ -344,8 +354,16 @@ namespace Win32Util{ namespace WfpUtil{
 		fwpFilter.filterCondition = m_vecConditions.data();
 
 		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
-		UINT64 filterId = 0;
-		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId);
+		FILTER_ID filterId = { 0 };
+
+		//v4用のフィルターを追加
+		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v4);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+
+		//v6用のフィルターを追加
+		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+		dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v6);
 		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
 		m_vecFilterId.push_back(filterId);
 		m_vecConditions.clear();
