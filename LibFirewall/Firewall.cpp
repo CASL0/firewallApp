@@ -423,14 +423,15 @@ namespace Win32Util{ namespace WfpUtil{
 		FWPM_FILTER0 fwpFilter = { 0 };
 		fwpFilter.subLayerKey = m_subLayerGUID;
 
-		fwpFilter.weight.type = FWP_EMPTY;
+		//ãñâ¬ÇÃï˚ÇóDêÊÇ∑ÇÈ
+		fwpFilter.weight.type = FWP_UINT8;
+		fwpFilter.weight.uint8 = action == FW_ACTION_PERMIT ? 2 : 1;
 
 		fwpFilter.displayData.name = const_cast<WCHAR*>(FW_APP_NAME);
 		fwpFilter.displayData.description = const_cast<WCHAR*>(FW_APP_NAME);
 
 		fwpFilter.action.type = action == FW_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
 
-		BOOST_LOG_TRIVIAL(trace) << "Adding a filter";
 		UINT64 filterID;
 		std::vector<UINT64> vecFilterID;
 
