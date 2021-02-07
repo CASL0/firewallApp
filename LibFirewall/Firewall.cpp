@@ -5,6 +5,7 @@
 #include <vector>
 #include <fwpmu.h>
 #include <memory>
+#include <array>
 #include <boost/log/trivial.hpp>
 
 #include "Firewall.h"
@@ -33,6 +34,16 @@ namespace Win32Util{ namespace WfpUtil{
 		UINT64 v6;
 	} FILTER_ID;
 
+	typedef struct _IP_ADDR
+	{
+		int af;
+		union
+		{
+			UINT32 v4;
+			std::array<BYTE, 16> v6;
+		};
+	} IP_ADDR;
+
 	class CFirewall::Impl
 	{
 	public:
@@ -40,6 +51,8 @@ namespace Win32Util{ namespace WfpUtil{
 		GUID m_subLayerGUID;
 		std::vector<FILTER_ID> m_vecFilterId;
 		std::vector<FWPM_FILTER_CONDITION0> m_vecConditions;
+		std::vector<IP_ADDR> m_vecIpAddr;
+		BYTE m_flagConditions;
 	public:
 		Impl();
 		~Impl() = default;
@@ -71,7 +84,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		//ホスト名を解決する
 		//存在しない場合Win32Exceptionをthrowする(クライアントコードでは例外を捕捉する)
-		std::string GetIpAddrByFqdn(const std::string& sFqdn);
+		void FqdnToIpAddr(const std::string& sFqdn);
 
 		//サービス名を解決する(etc/servicesからの解決)
 		//存在しない場合runtime_errorをthrowする(クライアントコードでは例外を捕捉する)
@@ -92,7 +105,9 @@ namespace Win32Util{ namespace WfpUtil{
 		m_hEngine(nullptr),
 		m_subLayerGUID({ 0 }),
 		m_vecFilterId(std::vector<FILTER_ID>()), 
-		m_vecConditions(std::vector<FWPM_FILTER_CONDITION0>())
+		m_vecConditions(std::vector<FWPM_FILTER_CONDITION0>()),
+		m_vecIpAddr(std::vector<IP_ADDR>()),
+		m_flagConditions(0)
 	{
 		DWORD dwRet;
 		WSADATA wsaData;
@@ -195,6 +210,7 @@ namespace Win32Util{ namespace WfpUtil{
 		fwpCondition.conditionValue.type = FWP_BYTE_BLOB_TYPE;
 		fwpCondition.conditionValue.byteBlob = appBlob;
 		vecFwpConditions.push_back(fwpCondition);
+		FwpmFreeMemory0((void**)&appBlob);
 	}
 
 	std::wstring CFirewall::Impl::AstrToWstr(const std::string& src)
@@ -248,12 +264,12 @@ namespace Win32Util{ namespace WfpUtil{
 		sProtocol = std::string(scheme.begin(), scheme.end());
 	}
 
-	std::string CFirewall::Impl::GetIpAddrByFqdn(const std::string& sFqdn)
+	void CFirewall::Impl::FqdnToIpAddr(const std::string& sFqdn)
 	{
 		BOOST_LOG_TRIVIAL(trace) << "FQDN: " << sFqdn;
 		addrinfo hints = { 0 };
-		hints.ai_family = AF_INET;
-		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_family = AF_UNSPEC;
+		hints.ai_flags = AI_ALL;
 
 		addrinfo* pAddrInfo = nullptr;
 		int iRet = getaddrinfo(sFqdn.c_str(), nullptr, &hints, &pAddrInfo);
@@ -261,10 +277,34 @@ namespace Win32Util{ namespace WfpUtil{
 
 		BOOST_LOG_TRIVIAL(trace) << "getaddrinfo succeeded";
 
-		IN_ADDR addr = { 0 };
-		addr.S_un = ((SOCKADDR_IN*)(pAddrInfo->ai_addr))->sin_addr.S_un;
+		SOCKADDR_IN*  sockAddrV4 = nullptr;
+		SOCKADDR_IN6* sockAddrV6 = nullptr;
+		for (ADDRINFO* ptr = pAddrInfo; ptr != nullptr; ptr->ai_next)
+		{
+			IP_ADDR ipAddr = { 0 };
+			switch (ptr->ai_family)
+			{
+			case AF_INET:
+			{
+				sockAddrV4 = (SOCKADDR_IN*)ptr->ai_addr;
+				ipAddr.af = AF_INET;
+				ipAddr.v4 = ntohl(sockAddrV4->sin_addr.S_un.S_addr);
+				break;
+			}
+			case AF_INET6:
+			{
+				sockAddrV6 = (SOCKADDR_IN6*)ptr->ai_addr;
+				ipAddr.af = AF_INET6;
+				CopyMemory(ipAddr.v6.data(), sockAddrV6->sin6_addr.u.Byte, 16);
+				break;
+			}
+			default:
+				continue;
+			}
+			m_vecIpAddr.push_back(ipAddr);
+		}
+
 		freeaddrinfo(pAddrInfo);
-		return std::string(inet_ntoa(addr));
 	}
 
 	UINT16 CFirewall::Impl::GetPortByServ(const std::string& sService)
@@ -316,7 +356,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::AddFqdnCondition(const std::string& sFqdn)
 	{
-		std::string sIpAddr = GetIpAddrByFqdn(sFqdn);
+		FqdnToIpAddr(sFqdn);
 		AddIpAddrCondition(sIpAddr);
 	}
 
