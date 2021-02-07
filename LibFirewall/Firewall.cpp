@@ -19,14 +19,6 @@
 #pragma warning(disable : 4996)
 
 namespace Win32Util{ namespace WfpUtil{
-	typedef struct
-	{
-		UINT16 port;		//ポート番号
-		UINT32 mask;		//サブネットマスク
-		UINT32 hexAddr;		//IPアドレス
-		UINT64 filterID;	//フィルターID
-
-	} FILTER_COND_INFO;
 
 	typedef struct
 	{
@@ -47,11 +39,26 @@ namespace Win32Util{ namespace WfpUtil{
 	class CFirewall::Impl
 	{
 	public:
+		//フィルター条件に追加する場合、該当するフラグを立てる
+		//IPアドレス --> 1bit目を立てる
+		//ポート番号 --> 2bit目を立てる
+		//プロセス	 --> 3bit目を立てる
+		enum
+		{
+			FLAG_IP_ADDR_COND = 0x01,
+			FLAG_PORT_COND	  = 0x02,
+			FLAG_PROCESS_COND = 0x04,
+
+		};
+
+		LPCWSTR FW_APP_NAME = L"WFP_Utility";
+	public:
 		HANDLE m_hEngine;
 		GUID m_subLayerGUID;
 		std::vector<FILTER_ID> m_vecFilterId;
-		std::vector<FWPM_FILTER_CONDITION0> m_vecConditions;
 		std::vector<IP_ADDR> m_vecIpAddr;
+		UINT16 m_wPort;
+		std::string m_sPathToApp;
 		BYTE m_flagConditions;
 	public:
 		Impl();
@@ -96,17 +103,21 @@ namespace Win32Util{ namespace WfpUtil{
 
 		std::wstring AstrToWstr(const std::string& src);
 
+		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::array<BYTE, 16> pByV6Addr, UINT8 prefixLength);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::string& sPathToApp);
+
+		inline void InitCondFlags();
 	};
 
 	CFirewall::Impl::Impl() :
 		m_hEngine(nullptr),
 		m_subLayerGUID({ 0 }),
 		m_vecFilterId(std::vector<FILTER_ID>()), 
-		m_vecConditions(std::vector<FWPM_FILTER_CONDITION0>()),
 		m_vecIpAddr(std::vector<IP_ADDR>()),
+		m_wPort(0),
+		m_sPathToApp(std::string()),
 		m_flagConditions(0)
 	{
 		DWORD dwRet;
@@ -149,8 +160,8 @@ namespace Win32Util{ namespace WfpUtil{
 		CopyMemory(&m_subLayerGUID, &fwpSubLayer.subLayerKey, sizeof(fwpSubLayer.subLayerKey));
 		BOOST_LOG_TRIVIAL(trace) << "UuidCreate succeeded";
 
-		fwpSubLayer.displayData.name = const_cast<WCHAR*>(L"WfpSublayer");
-		fwpSubLayer.displayData.description = const_cast<WCHAR*>(L"create WfpSublayer");
+		fwpSubLayer.displayData.name = const_cast<WCHAR*>(FW_APP_NAME);
+		fwpSubLayer.displayData.description = const_cast<WCHAR*>(FW_APP_NAME);
 		fwpSubLayer.flags = 0;
 		fwpSubLayer.weight = 0x100;
 
@@ -173,6 +184,20 @@ namespace Win32Util{ namespace WfpUtil{
 		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
 		ThrowWsaError(iRet != 1, "inet_pton failed");
 		return ntohl(hexAddr.S_un.S_addr);
+	}
+
+	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::array<BYTE, 16> pByV6Addr, UINT8 prefixLength)
+	{
+		std::shared_ptr<FWP_V6_ADDR_AND_MASK> pFwpV6AddrMask = std::make_shared<FWP_V6_ADDR_AND_MASK>();
+		CopyMemory(pFwpV6AddrMask->addr, pByV6Addr.data(), 16);
+		pFwpV6AddrMask->prefixLength = prefixLength;
+
+		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
+		fwpCondition.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+		fwpCondition.matchType = FWP_MATCH_EQUAL;
+		fwpCondition.conditionValue.type = FWP_V6_ADDR_MASK;
+		fwpCondition.conditionValue.v6AddrMask = pFwpV6AddrMask.get();
+		vecFwpConditions.push_back(fwpCondition);
 	}
 
 	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT32 dwAddr, UINT32 dwMask)
@@ -210,7 +235,12 @@ namespace Win32Util{ namespace WfpUtil{
 		fwpCondition.conditionValue.type = FWP_BYTE_BLOB_TYPE;
 		fwpCondition.conditionValue.byteBlob = appBlob;
 		vecFwpConditions.push_back(fwpCondition);
-		FwpmFreeMemory0((void**)&appBlob);
+	}
+
+	inline void CFirewall::Impl::InitCondFlags()
+	{
+		m_vecIpAddr.clear();
+		m_flagConditions = 0;
 	}
 
 	std::wstring CFirewall::Impl::AstrToWstr(const std::string& src)
@@ -231,10 +261,10 @@ namespace Win32Util{ namespace WfpUtil{
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.v4);
-			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem.v6);
-			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 		}
 	}
 
@@ -279,7 +309,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		SOCKADDR_IN*  sockAddrV4 = nullptr;
 		SOCKADDR_IN6* sockAddrV6 = nullptr;
-		for (ADDRINFO* ptr = pAddrInfo; ptr != nullptr; ptr->ai_next)
+		for (ADDRINFO* ptr = pAddrInfo; ptr != nullptr; ptr = ptr->ai_next)
 		{
 			IP_ADDR ipAddr = { 0 };
 			switch (ptr->ai_family)
@@ -289,6 +319,7 @@ namespace Win32Util{ namespace WfpUtil{
 				sockAddrV4 = (SOCKADDR_IN*)ptr->ai_addr;
 				ipAddr.af = AF_INET;
 				ipAddr.v4 = ntohl(sockAddrV4->sin_addr.S_un.S_addr);
+				BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << inet_ntoa(sockAddrV4->sin_addr);
 				break;
 			}
 			case AF_INET6:
@@ -296,6 +327,8 @@ namespace Win32Util{ namespace WfpUtil{
 				sockAddrV6 = (SOCKADDR_IN6*)ptr->ai_addr;
 				ipAddr.af = AF_INET6;
 				CopyMemory(ipAddr.v6.data(), sockAddrV6->sin6_addr.u.Byte, 16);
+				std::vector<CHAR> ipBuffer(50);
+				BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << inet_ntop(AF_INET6, &sockAddrV6->sin6_addr, ipBuffer.data(), 50);
 				break;
 			}
 			default:
@@ -324,16 +357,20 @@ namespace Win32Util{ namespace WfpUtil{
 
 		BOOST_LOG_TRIVIAL(trace) << "Removing filter";
 		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index).v4);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 		dwRet = FwpmFilterDeleteById0(m_hEngine, m_vecFilterId.at(index).v6);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterDeleteById0 failed");
+		ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 		m_vecFilterId.erase(m_vecFilterId.cbegin() + index);
 	}
 
 	void CFirewall::Impl::AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask)
 	{
 		UINT32 hexAddr = TranslateStr2Hex(sIpAddr);
-		SetupConditions(m_vecConditions, hexAddr, dwMask);
+		IP_ADDR ipAddr = { 0 };
+		ipAddr.af = AF_INET;
+		ipAddr.v4 = hexAddr;
+		m_vecIpAddr.push_back(ipAddr);
+		m_flagConditions |= FLAG_IP_ADDR_COND;
 		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sIpAddr;
 	}
 
@@ -344,7 +381,8 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::AddPortCondition(UINT16 wPort)
 	{
-		SetupConditions(m_vecConditions, wPort);
+		m_wPort = wPort;
+		m_flagConditions |= FLAG_PORT_COND;
 		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << wPort;
 	}
 
@@ -357,7 +395,7 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::Impl::AddFqdnCondition(const std::string& sFqdn)
 	{
 		FqdnToIpAddr(sFqdn);
-		AddIpAddrCondition(sIpAddr);
+		m_flagConditions |= FLAG_IP_ADDR_COND;
 	}
 
 	void CFirewall::Impl::AddUrlCondition(const std::string& sUrl)
@@ -372,8 +410,8 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::AddProcessCondition(const std::string& sPathToApp)
 	{
-		BOOST_LOG_TRIVIAL(trace) << "App: " << sPathToApp;
-		SetupConditions(m_vecConditions, sPathToApp);
+		m_sPathToApp = sPathToApp;
+		m_flagConditions |= FLAG_PROCESS_COND;
 		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sPathToApp;
 	}
 
@@ -385,28 +423,73 @@ namespace Win32Util{ namespace WfpUtil{
 
 		fwpFilter.weight.type = FWP_EMPTY;
 
-		fwpFilter.displayData.name = const_cast<WCHAR*>(L"IPv4Permit");
-		fwpFilter.displayData.description = const_cast<WCHAR*>(L"Filter for IPv4");
+		fwpFilter.displayData.name = const_cast<WCHAR*>(FW_APP_NAME);
+		fwpFilter.displayData.description = const_cast<WCHAR*>(FW_APP_NAME);
 
 		fwpFilter.action.type = action == FW_ACTION_PERMIT ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
 
-		fwpFilter.numFilterConditions = m_vecConditions.size();
-		fwpFilter.filterCondition = m_vecConditions.data();
-
-		BOOST_LOG_TRIVIAL(trace) << "Adding filter";
+		BOOST_LOG_TRIVIAL(trace) << "Adding a filter";
 		FILTER_ID filterId = { 0 };
 
-		//v4用のフィルターを追加
-		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v4);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		std::vector<FWPM_FILTER_CONDITION0> vecWfpConditions;
+		if (m_flagConditions & FLAG_PROCESS_COND)
+		{
+			SetupConditions(vecWfpConditions, m_sPathToApp);
+		}
 
-		//v6用のフィルターを追加
-		fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
-		dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v6);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
-		m_vecFilterId.push_back(filterId);
-		m_vecConditions.clear();
+		if (m_flagConditions & FLAG_PORT_COND)
+		{
+			SetupConditions(vecWfpConditions, m_wPort);
+		}
+
+		//IPアドレスを指定しない場合、このままフィルターを追加する
+		if ((m_flagConditions & FLAG_IP_ADDR_COND) == 0)
+		{
+			fwpFilter.numFilterConditions = vecWfpConditions.size();
+			fwpFilter.filterCondition = vecWfpConditions.data();
+			//v4用のフィルターを追加
+			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v4);
+			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv4";
+
+			//v6用のフィルターを追加
+			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+			dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterId.v6);
+			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv6";
+			m_vecFilterId.push_back(filterId);
+			InitCondFlags();
+			return;
+		}
+
+		for (const auto& elem : m_vecIpAddr)
+		{
+			filterId = { 0 };
+			if (elem.af == AF_INET)
+			{
+				SetupConditions(vecWfpConditions, elem.v4, 0xffffffff);
+				fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+				BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv4";
+			}
+			else if (elem.af == AF_INET6)
+			{
+				SetupConditions(vecWfpConditions, elem.v6, 128);
+				fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+				BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv6";
+			}
+
+			fwpFilter.numFilterConditions = vecWfpConditions.size();
+			fwpFilter.filterCondition = vecWfpConditions.data();
+			
+			bool isIpv4 = elem.af == AF_INET;
+			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, isIpv4 ? &filterId.v4 : &filterId.v6);
+			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			m_vecFilterId.push_back(filterId);
+
+			vecWfpConditions.pop_back();
+		}
+		InitCondFlags();
 	}
 
 	CFirewall::CFirewall(): pimpl(std::make_shared<Impl>())
