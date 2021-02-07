@@ -82,17 +82,17 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             InitComboBox(hWndDlg, hWndComboAction);
 
             //初期状態でチェック状態
-            SendMessage(hWndCheckBox["addr"]   , BM_SETCHECK, BST_CHECKED, 0);
-            SendMessage(hWndCheckBox["port"]   , BM_SETCHECK, BST_CHECKED, 0);
+            SendMessage(hWndCheckBox["url"]   , BM_SETCHECK, BST_CHECKED, 0);
             SendMessage(hWndCheckBox["process"], BM_SETCHECK, BST_CHECKED, 0);
 
             //初期状態で無効化
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"addr"    , 0);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"port"    , 0);
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"fqdn"    , 0);
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"protocol", 0);
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"url"     , 0);
 
         }
-
+        
         logging::add_common_attributes();
         logging::add_file_log(
             keywords::file_name = "firewall.log", // logを出力するファイル名
@@ -189,6 +189,9 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
         case IDC_BUTTON_ADD:
         {
+            //二重押しを防ぐため無効化しておく
+            EnableWindow(hWndButton["add"], FALSE);
+
             std::wstringstream ssListItem;
             bool isPermit;
             try
@@ -237,6 +240,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 MessageBox(hWndDlg, L"フィルターの追加に失敗しました", L"", MB_ICONERROR | MB_OK);
+                EnableWindow(hWndButton["add"], TRUE);
                 break;
             }
 
@@ -249,20 +253,26 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 SetWindowText(elem.second, L"");
             }
+            EnableWindow(hWndButton["add"], TRUE);
             return (INT_PTR)TRUE;
         }
         case IDC_BUTTON_DEL:
         {
+            //二重押しを防ぐため無効化しておく
+            EnableWindow(hWndButton["del"], FALSE);
+
             //未選択の場合は-1が返ってくる
             LRESULT idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
             if (idx == -1)
             {
+                EnableWindow(hWndButton["del"], TRUE);
                 return (INT_PTR)TRUE;
             }
             int id = MessageBox(hWndDlg, L"削除しますか？", L"", MB_OKCANCEL | MB_ICONEXCLAMATION);
 
             if (id == IDCANCEL)
             {
+                EnableWindow(hWndButton["del"], TRUE);
                 return (INT_PTR)TRUE;
             }
 
@@ -274,9 +284,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::RemovingFilter failed with error: " << e.what();
                 MessageBox(hWndDlg, L"フィルターの削除に失敗しました", L"", MB_ICONERROR | MB_OK);
+                EnableWindow(hWndButton["del"], TRUE);
                 break;
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
+            EnableWindow(hWndButton["del"], TRUE);
             return (INT_PTR)TRUE;        
         }
         case IDC_CHECK_ADDR:
