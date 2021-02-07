@@ -27,8 +27,6 @@ namespace keywords = boost::log::keywords;
 #define FWM_IP_CHECK     (FWM_CHECKBOX + 1)
 #define FWM_PORT_CHECK   (FWM_IP_CHECK + 1)
 
-static const DWORD LENGTH_BUFFER = 1024;
-
 static std::shared_ptr<CFirewall> pFirewall = nullptr;
 
 INT_PTR CALLBACK DialogFunc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
@@ -191,12 +189,49 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
         case IDC_BUTTON_ADD:
         {
-            int iCurSel = (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
-
+            std::wstringstream ssListItem;
+            bool isPermit;
             try
             {
-                //pFirewall->AddUrlCondition(sUrl.data());
-                //pFirewall->AddFilter(iCurSel == 0 ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
+                for (const auto& elem : hWndCheckBox)
+                {
+                    if (SendMessage(elem.second, BM_GETCHECK, 0, 0) != BST_CHECKED)
+                    {
+                        continue;
+                    }
+
+                    constexpr int BUFFER_LENGTH = 1024;
+                    std::vector<CHAR> sEditBuffer(BUFFER_LENGTH);
+                    GetWindowTextA(hWndEdit[elem.first], sEditBuffer.data(), BUFFER_LENGTH);
+                    
+                    if (elem.first == "addr")
+                    {
+                        pFirewall->AddIpAddrCondition(sEditBuffer.data());
+                    }
+                    else if (elem.first == "port")
+                    {
+                        pFirewall->AddPortCondition(std::atoi(sEditBuffer.data()));
+                    }
+                    else if (elem.first == "fqdn")
+                    {
+                        pFirewall->AddFqdnCondition(sEditBuffer.data());
+                    }
+                    else if (elem.first == "protocol")
+                    {
+                        pFirewall->AddPortCondition(sEditBuffer.data());
+                    }
+                    else if (elem.first == "url")
+                    {
+                        pFirewall->AddUrlCondition(sEditBuffer.data());
+                    }
+                    else if (elem.first == "process")
+                    {
+                        pFirewall->AddProcessCondition(sEditBuffer.data());
+                    }
+                    ssListItem << sEditBuffer.data() << ", ";
+                }
+                isPermit = 0 == (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
+                pFirewall->AddFilter(isPermit ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
             }
             catch (std::runtime_error& e)
             {
@@ -205,14 +240,15 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
                 break;
             }
 
-            std::wstringstream ssListItem;
-            //ssListItem << sUrl.data() << L"    " << sProtocol.data() << L"    " << STRING_COMBO[iCurSel];
+            ssListItem << (isPermit ? L"‹–‰Â" : L"ŽÕ’f");
 
             //ListBox‚Ì––”ö‚É’Ç‰Á(‘æ3ˆø”‚É-1‚ðŽw’è)
             SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)ssListItem.str().c_str());
 
-            //SetWindowText(hWndEditAddr, L"");
-            //SetWindowText(hWndEditProtocol, L"");
+            for (const auto& elem : hWndEdit)
+            {
+                SetWindowText(elem.second, L"");
+            }
             return (INT_PTR)TRUE;
         }
         case IDC_BUTTON_DEL:
