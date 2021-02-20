@@ -11,6 +11,12 @@ namespace Win32Util{ namespace WfpUtil{
 		FW_ACTION_BLOCK,
 	};
 
+	enum FW_DIRECTION
+	{
+		FW_DIRECTION_OUTBOUND = 0,
+		FW_DIRECTION_INBOUND,
+	};
+
 	class CFirewall
 	{
 	private:
@@ -30,6 +36,6 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddUrlCondition(const std::string& sUrl);
 		void AddProcessCondition(const std::string& sPathToApp);
 		void AddFilter(FW_ACTION action);
-
+		void AllBlock(bool isEnable, FW_DIRECTION direction);
 	};
 }}

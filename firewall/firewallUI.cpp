@@ -66,6 +66,8 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         "url",
     };
 
+    static bool isAllBlock = false;
+
     switch (message)
     {
     case WM_INITDIALOG:
@@ -297,8 +299,19 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             //“ñd‰Ÿ‚µ‚ð–h‚®‚½‚ß–³Œø‰»‚µ‚Ä‚¨‚­
             EnableWindow(hWndButton["allBlock"], FALSE);
-
-            SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)L"‘SŽÕ’f");
+            try
+            {
+                pFirewall->AllBlock(!isAllBlock, FW_DIRECTION_OUTBOUND);
+            }
+            catch (const std::runtime_error& e)
+            {
+                BOOST_LOG_TRIVIAL(trace) << "CFirewall::AllBlock failed with error: " << e.what();
+                MessageBox(hWndDlg, L"ƒtƒBƒ‹ƒ^[‚Ì’Ç‰Á‚ÉŽ¸”s‚µ‚Ü‚µ‚½", L"", MB_ICONERROR | MB_OK);
+                EnableWindow(hWndButton["allBlock"], TRUE);
+                break;
+            }
+            isAllBlock = !isAllBlock;
+            SetWindowText(hWndButton["allBlock"], isAllBlock ? L"‘SŽÕ’f‚Ì‰ðœ" : L"‘SŽÕ’f‚Ì“K—p");
             EnableWindow(hWndButton["allBlock"], TRUE);
             return (INT_PTR)TRUE;
 

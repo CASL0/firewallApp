@@ -27,9 +27,9 @@ void InitButton(HWND hWndParent, std::map<std::string, HWND>& hWndButton)
 {
     //key -> (表示テキスト,リソースID)
     static const std::map<std::string, std::pair<std::wstring, int>> btnResources = {
-        {"add"     , {L"追　加" ,IDC_BUTTON_ADD} },
-        {"del"     , {L"削　除" ,IDC_BUTTON_DEL} },
-        {"allBlock", {L"全遮断" ,IDC_BUTTON_ALLBLOCK}},
+        {"add"     , {L"追　加"       ,IDC_BUTTON_ADD} },
+        {"del"     , {L"削　除"       ,IDC_BUTTON_DEL} },
+        {"allBlock", {L"全遮断の適用" ,IDC_BUTTON_ALLBLOCK}},
     };
 
     for (const auto& elem : btnResources)

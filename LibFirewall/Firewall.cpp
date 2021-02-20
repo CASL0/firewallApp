@@ -63,6 +63,9 @@ namespace Win32Util{ namespace WfpUtil{
 		UINT16 m_wPort;
 		std::string m_sPathToApp;
 		BYTE m_flagConditions;
+		std::vector<UINT64> m_vecAllBlockFilterIDs;
+		int m_numDnsServers;	//削除する時、フィルターIDのオフセットになる
+
 	public:
 		Impl();
 		~Impl() = default;
@@ -76,7 +79,8 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddUrlCondition(const std::string& sUrl);
 		void AddProcessCondition(const std::string& sPathToApp);
 		void AddFilter(FW_ACTION action);
-		
+		void AllBlock(bool isEnable, FW_DIRECTION direction);
+
 		//フィルターの項番を指定して削除する
 		//何番目に追加したかを指定する(0-based)
 		//例：RemoveFilter(2) -> ３番目に追加したフィルターを削除する
@@ -119,11 +123,14 @@ namespace Win32Util{ namespace WfpUtil{
 	CFirewall::Impl::Impl() :
 		m_hEngine(nullptr),
 		m_subLayerGUID({ 0 }),
-		m_filterIdStore(FILTER_ID_STORE()), 
+		m_filterIdStore(FILTER_ID_STORE()),
 		m_vecIpAddr(std::vector<IP_ADDR>()),
 		m_wPort(0),
 		m_sPathToApp(std::string()),
-		m_flagConditions(0)
+		m_flagConditions(0),
+		m_vecAllBlockFilterIDs(std::vector<UINT64>()),
+		m_numDnsServers(0)
+
 	{
 		DWORD dwRet;
 		WSADATA wsaData;
@@ -152,6 +159,16 @@ namespace Win32Util{ namespace WfpUtil{
 		dwRet = FwpmEngineOpen0(nullptr, RPC_C_AUTHN_WINNT, nullptr, nullptr, &m_hEngine);
 		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmEngineOpen0 failed");
 		AddSubLayer();
+
+		//DNSサーバーとの通信は許可する
+		auto dnsServerList = GetDnsServers();
+		for (const auto& elem : dnsServerList)
+		{
+			AddIpAddrCondition(elem);
+		}
+
+		AddFilter(FW_ACTION_PERMIT);
+		m_numDnsServers = dnsServerList.size();
 	}
 
 	void CFirewall::Impl::AddSubLayer()
@@ -295,10 +312,17 @@ namespace Win32Util{ namespace WfpUtil{
 		{
 			for (const auto& u64Elem : vecElem)
 			{
-				BOOST_LOG_TRIVIAL(trace) << "Removing filter";
+				BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << u64Elem;
 				dwRet = FwpmFilterDeleteById0(m_hEngine, u64Elem);
 				ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 			}
+		}
+
+		for (const auto& elem : m_vecAllBlockFilterIDs)
+		{
+			BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
+			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
+			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 		}
 	}
 
@@ -389,13 +413,13 @@ namespace Win32Util{ namespace WfpUtil{
 		BOOST_LOG_TRIVIAL(trace) << "RemoveFilter begins";
 		DWORD dwRet = ERROR_BAD_COMMAND;
 
-		for (const auto& elem : m_filterIdStore.at(index))
+		for (const auto& elem : m_filterIdStore.at(index + m_numDnsServers))
 		{
-			BOOST_LOG_TRIVIAL(trace) << "Removing filter";
+			BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
 			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
 		}
-		m_filterIdStore.erase(m_filterIdStore.cbegin() + index);
+		m_filterIdStore.erase(m_filterIdStore.cbegin() + index + m_numDnsServers);
 	}
 
 	void CFirewall::Impl::AddIpAddrCondition(const std::string& sIpAddr, UINT32 dwMask)
@@ -488,14 +512,14 @@ namespace Win32Util{ namespace WfpUtil{
 			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
 			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
-			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv4";
+			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv4: " << filterID;
 			vecFilterID.push_back(filterID);
 
 			//v6用のフィルターを追加
 			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 			dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
 			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
-			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv6";
+			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv6: " << filterID;
 			vecFilterID.push_back(filterID);
 			m_filterIdStore.push_back(vecFilterID);
 			InitCondFlags();
@@ -523,12 +547,54 @@ namespace Win32Util{ namespace WfpUtil{
 			
 			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
 			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			BOOST_LOG_TRIVIAL(trace) << filterID;
 			vecFilterID.push_back(filterID);
 
 			vecWfpConditions.pop_back();
 		}
 		m_filterIdStore.push_back(vecFilterID);
 		InitCondFlags();
+	}
+
+	void CFirewall::Impl::AllBlock(bool isEnable, FW_DIRECTION direction)
+	{
+		//isEnable == false ---> 全遮断を無効化する
+		if (!isEnable)
+		{
+			for (const auto& elem : m_vecAllBlockFilterIDs)
+			{
+				BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
+				DWORD dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
+				ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
+			}
+			m_vecAllBlockFilterIDs.clear();
+			return;
+		}
+
+		FWPM_FILTER0 fwpFilter = { 0 };
+		UINT64 filterID;
+		fwpFilter.subLayerKey = m_subLayerGUID;
+
+		fwpFilter.weight.type = FWP_UINT8;
+		fwpFilter.weight.uint8 = 1;
+		fwpFilter.displayData.name = const_cast<WCHAR*>(FW_APP_NAME);
+		fwpFilter.displayData.description = const_cast<WCHAR*>(FW_APP_NAME);
+		fwpFilter.action.type = FWP_ACTION_BLOCK;
+
+		//全アプリの通信を対象とする
+		fwpFilter.numFilterConditions = 0;
+
+		fwpFilter.layerKey = direction == FW_DIRECTION_OUTBOUND ? FWPM_LAYER_ALE_AUTH_CONNECT_V4 : FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
+		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		BOOST_LOG_TRIVIAL(trace) << "All block IPv4: " << filterID;
+		m_vecAllBlockFilterIDs.push_back(filterID);
+		
+		fwpFilter.layerKey = direction == FW_DIRECTION_OUTBOUND ? FWPM_LAYER_ALE_AUTH_CONNECT_V6 : FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
+		dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
+		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		BOOST_LOG_TRIVIAL(trace) << "All block IPv6: " << filterID;
+		m_vecAllBlockFilterIDs.push_back(filterID);
 	}
 
 	CFirewall::CFirewall(): pimpl(std::make_shared<Impl>())
@@ -583,6 +649,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddFilter(FW_ACTION action)
 	{
 		pimpl->AddFilter(action);
+	}
+
+	void CFirewall::AllBlock(bool isEnable, FW_DIRECTION direction)
+	{
+		pimpl->AllBlock(isEnable, direction);
 	}
 
 }	//namespace WfpUtil
