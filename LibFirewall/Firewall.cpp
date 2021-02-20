@@ -149,7 +149,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		RemoveSubLayer();
 		dwRet = FwpmEngineClose0(m_hEngine);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmEngineClose0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 	}
 
 	void CFirewall::Impl::WfpSetup()
@@ -157,7 +157,7 @@ namespace Win32Util{ namespace WfpUtil{
 		BOOST_LOG_TRIVIAL(trace) << "WfpSetup begins";
 		DWORD dwRet;
 		dwRet = FwpmEngineOpen0(nullptr, RPC_C_AUTHN_WINNT, nullptr, nullptr, &m_hEngine);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmEngineOpen0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		AddSubLayer();
 
 		//DNSサーバーとの通信は許可する
@@ -189,14 +189,14 @@ namespace Win32Util{ namespace WfpUtil{
 
 		BOOST_LOG_TRIVIAL(trace) << "Adding Sublayer";
 		DWORD dwRet = FwpmSubLayerAdd0(m_hEngine, &fwpSubLayer, nullptr);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmSubLayerAdd0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 	}
 
 	void CFirewall::Impl::RemoveSubLayer()
 	{
 		BOOST_LOG_TRIVIAL(trace) << "Removing Sublayer";
 		DWORD dwRet = FwpmSubLayerDeleteByKey0(m_hEngine, &m_subLayerGUID);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmSubLayerDeleteByKey0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
 	}
 
@@ -279,7 +279,7 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		FWP_BYTE_BLOB* appBlob = nullptr;
 		DWORD dwRet = FwpmGetAppIdFromFileName0(AstrToWstr(sPathToApp).c_str(), &appBlob);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmGetAppIdFromFileName0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
 		fwpCondition.fieldKey = FWPM_CONDITION_ALE_APP_ID;
 		fwpCondition.matchType = FWP_MATCH_EQUAL;
@@ -314,7 +314,7 @@ namespace Win32Util{ namespace WfpUtil{
 			{
 				BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << u64Elem;
 				dwRet = FwpmFilterDeleteById0(m_hEngine, u64Elem);
-				ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
+				ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 			}
 		}
 
@@ -322,7 +322,7 @@ namespace Win32Util{ namespace WfpUtil{
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
-			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		}
 	}
 
@@ -417,7 +417,7 @@ namespace Win32Util{ namespace WfpUtil{
 		{
 			BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
 			dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
-			ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
+			ThrowWin32Error(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, dwRet);
 		}
 		m_filterIdStore.erase(m_filterIdStore.cbegin() + index + m_numDnsServers);
 	}
@@ -511,14 +511,14 @@ namespace Win32Util{ namespace WfpUtil{
 			//v4用のフィルターを追加
 			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
-			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv4: " << filterID;
 			vecFilterID.push_back(filterID);
 
 			//v6用のフィルターを追加
 			fwpFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 			dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
-			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 			BOOST_LOG_TRIVIAL(trace) << "Adding a filter for IPv6: " << filterID;
 			vecFilterID.push_back(filterID);
 			m_filterIdStore.push_back(vecFilterID);
@@ -546,7 +546,7 @@ namespace Win32Util{ namespace WfpUtil{
 			fwpFilter.filterCondition = vecWfpConditions.data();
 			
 			DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
-			ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 			BOOST_LOG_TRIVIAL(trace) << filterID;
 			vecFilterID.push_back(filterID);
 
@@ -565,7 +565,7 @@ namespace Win32Util{ namespace WfpUtil{
 			{
 				BOOST_LOG_TRIVIAL(trace) << "Removing a filter: " << elem;
 				DWORD dwRet = FwpmFilterDeleteById0(m_hEngine, elem);
-				ThrowHresultError(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, "FwpmFilterDeleteById0 failed");
+				ThrowWin32Error(dwRet != ERROR_SUCCESS && dwRet != FWP_E_FILTER_NOT_FOUND, dwRet);
 			}
 			m_vecAllBlockFilterIDs.clear();
 			return;
@@ -586,13 +586,13 @@ namespace Win32Util{ namespace WfpUtil{
 
 		fwpFilter.layerKey = direction == FW_DIRECTION_OUTBOUND ? FWPM_LAYER_ALE_AUTH_CONNECT_V4 : FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
 		DWORD dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		BOOST_LOG_TRIVIAL(trace) << "All block IPv4: " << filterID;
 		m_vecAllBlockFilterIDs.push_back(filterID);
 		
 		fwpFilter.layerKey = direction == FW_DIRECTION_OUTBOUND ? FWPM_LAYER_ALE_AUTH_CONNECT_V6 : FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
 		dwRet = FwpmFilterAdd0(m_hEngine, &fwpFilter, nullptr, &filterID);
-		ThrowHresultError(dwRet != ERROR_SUCCESS, "FwpmFilterAdd0 failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		BOOST_LOG_TRIVIAL(trace) << "All block IPv6: " << filterID;
 		m_vecAllBlockFilterIDs.push_back(filterID);
 	}
