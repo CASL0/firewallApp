@@ -93,14 +93,14 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
 
         }
         
-        /*
+        
         logging::add_common_attributes();
         logging::add_file_log(
             keywords::file_name = "firewall.log", // logを出力するファイル名
             keywords::format =
             "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
         );
-        */
+        
 
         try
         {
@@ -292,6 +292,16 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
             EnableWindow(hWndButton["del"], TRUE);
             return (INT_PTR)TRUE;        
+        }
+        case IDC_BUTTON_ALLBLOCK:
+        {
+            //二重押しを防ぐため無効化しておく
+            EnableWindow(hWndButton["allBlock"], FALSE);
+
+            SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)L"全遮断");
+            EnableWindow(hWndButton["allBlock"], TRUE);
+            return (INT_PTR)TRUE;
+
         }
         case IDC_CHECK_ADDR:
         {
