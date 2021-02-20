@@ -6,6 +6,7 @@
 #include <fwpmu.h>
 #include <memory>
 #include <array>
+#include <iphlpapi.h>
 #include <boost/log/trivial.hpp>
 
 #include "Firewall.h"
@@ -15,6 +16,7 @@
 #pragma comment(lib, "Rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "wininet.lib")
+#pragma comment(lib, "Iphlpapi.lib")
 
 #pragma warning(disable : 4996)
 
@@ -102,6 +104,8 @@ namespace Win32Util{ namespace WfpUtil{
 		//ì¸óÕó·ÅF"192.168.0.1"
 		UINT32 TranslateStr2Hex(const std::string& sAddr);
 
+		std::vector<std::string> GetDnsServers();
+
 		std::wstring AstrToWstr(const std::string& src);
 
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::array<BYTE, 16> pByV6Addr, UINT8 prefixLength);
@@ -185,6 +189,35 @@ namespace Win32Util{ namespace WfpUtil{
 		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
 		ThrowWsaError(iRet != 1, "inet_pton failed");
 		return ntohl(hexAddr.S_un.S_addr);
+	}
+
+	std::vector<std::string> CFirewall::Impl::GetDnsServers()
+	{
+		ULONG ulOutBufLen = sizeof(FIXED_INFO);
+		GetNetworkParams(nullptr, &ulOutBufLen);
+		std::shared_ptr<FIXED_INFO> pFixedInfo(
+			(FIXED_INFO*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, ulOutBufLen), 
+			[](FIXED_INFO* lpMem) 
+			{
+				HeapFree(GetProcessHeap(), 0, lpMem);
+			}
+		);
+		DWORD dwRet = GetNetworkParams(pFixedInfo.get(), &ulOutBufLen);
+		ThrowLastError(dwRet != ERROR_SUCCESS, "GetNetworkParams failed");
+		
+		std::vector<std::string> vecDnsServers;
+		vecDnsServers.push_back(pFixedInfo->DnsServerList.IpAddress.String);
+		BOOST_LOG_TRIVIAL(trace) << "DNS server: " << pFixedInfo->DnsServerList.IpAddress.String;
+
+		auto pIpAddr = pFixedInfo->DnsServerList.Next;
+		while (pIpAddr)
+		{
+			vecDnsServers.push_back(pIpAddr->IpAddress.String);
+			BOOST_LOG_TRIVIAL(trace) << "DNS server: " << pIpAddr->IpAddress.String;
+			pIpAddr = pIpAddr->Next;
+		}
+
+		return vecDnsServers;
 	}
 
 	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, const std::array<BYTE, 16> pByV6Addr, UINT8 prefixLength)
