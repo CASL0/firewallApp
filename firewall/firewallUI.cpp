@@ -54,6 +54,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     static std::map<std::string, HWND> hWndButton;
     static std::map<std::string, HWND> hWndEdit;
     static std::map<std::string, HWND> hWndCheckBox;
+    static HWND hWndTextAllBlock = nullptr;
 
     static const std::vector<std::string> IpKey = {
         "addr",
@@ -78,6 +79,10 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             //フィルター表示用リスト
             hWndList = GetDlgItem(hWndDlg, IDC_LIST);
+
+            //全遮断用のテキスト
+            hWndTextAllBlock = GetDlgItem(hWndDlg, IDC_TEXT_ALLBLOCK);
+            SetWindowText(hWndTextAllBlock, L"");
 
             InitButton(hWndDlg  , hWndButton);
             InitEdit(hWndDlg    , hWndEdit);
@@ -320,6 +325,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             }
             isAllBlock = !isAllBlock;
             SetWindowText(hWndButton["allBlock"], isAllBlock ? L"全遮断の解除" : L"全遮断の適用");
+            SetWindowText(hWndTextAllBlock, isAllBlock ? L"全通信を遮断中！" : L"");
             EnableWindow(hWndButton["allBlock"], TRUE);
             return (INT_PTR)TRUE;
 
