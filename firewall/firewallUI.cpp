@@ -12,6 +12,7 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/program_options.hpp>
 
 #pragma comment(lib, "LibFirewall.lib")
 
@@ -71,7 +72,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
     switch (message)
     {
     case WM_INITDIALOG:
-
+    {
         //UIパーツの設定
 
         {
@@ -94,15 +95,21 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"protocol", 0);
 
         }
-        
-        
-        logging::add_common_attributes();
-        logging::add_file_log(
-            keywords::file_name = "firewall.log", // logを出力するファイル名
-            keywords::format =
-            "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
-        );
-        
+
+        boost::program_options::options_description opt;
+        opt.add_options()
+            ("trace,t", "");
+        boost::program_options::variables_map vm;
+        boost::program_options::store(boost::program_options::parse_command_line(__argc, __wargv, opt), vm);
+        boost::program_options::notify(vm);
+        if (vm.count("trace"))
+        {
+            logging::add_common_attributes();
+            logging::add_file_log(
+                keywords::file_name = "trace.log", // logを出力するファイル名
+                keywords::format    = "%Tag%: [%TimeStamp%] [%ThreadID%] %Message%" // logのフォーマット
+            );
+        }
 
         try
         {
@@ -117,6 +124,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         }
 
         return (INT_PTR)TRUE;
+    }
     case WM_CLOSE:
         try
         {
