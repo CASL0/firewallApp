@@ -19,8 +19,10 @@
 #define IDS_STATIC_TEXT_URL             116
 #define IDS_STATIC_TEXT_PROCESS         117
 #define IDS_STATIC_TEXT_ACTION          118
-#define IDS_STATIC_TEXT_ALLBLOCK        119
 #define IDS_STATIC_TEXT_ALLBLOCK_ENABLE 119
+#define IDS_COMBO_SEL_PERMIT            120
+#define IDS_COMBO_SEL_BLOCK             121
+#define IDS_ERROR_FW_EXIT               122
 #define IDC_BUTTON_ADD                  1001
 #define IDC_IPADDRESS                   1002
 #define IDC_EDIT_PROTOCOL               1003

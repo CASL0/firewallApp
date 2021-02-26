@@ -1,3 +1,4 @@
+#include "global.h"
 #include "Firewall.h"
 #include "Win32Exception.h"
 #include "resource.h"
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <utility>
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/debug_output_backend.hpp>
 #include <boost/log/support/date_time.hpp>
@@ -22,11 +24,6 @@ namespace logging = boost::log;
 namespace expr = boost::log::expressions;
 namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
-
-#define FWM_DISABLE_FORM (WM_APP + 1)
-#define FWM_CHECKBOX     (FWM_DISABLE_FORM + 1)
-#define FWM_IP_CHECK     (FWM_CHECKBOX + 1)
-#define FWM_PORT_CHECK   (FWM_IP_CHECK + 1)
 
 static std::shared_ptr<CFirewall> pFirewall = nullptr;
 
@@ -48,25 +45,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     UNREFERENCED_PARAMETER(lParam);
-
+    static std::map<UINT, HWND> hWndCtrl;
+    static std::map<UINT, HWND> hWndEdit;
+    static HWND hWndComboBox = nullptr;
     static HWND hWndList = nullptr;
-    static HWND hWndComboAction = nullptr;
-    static std::map<std::string, HWND> hWndButton;
-    static std::map<std::string, HWND> hWndEdit;
-    static std::map<std::string, HWND> hWndCheckBox;
     static HWND hWndTextAllBlock = nullptr;
-
-    static const std::vector<std::string> IpKey = {
-        "addr",
-        "fqdn",
-        "url",
-    };
-
-    static const std::vector<std::string> PortKey = {
-        "port",
-        "protocol",
-        "url",
-    };
 
     static bool isAllBlock = false;
 
@@ -77,27 +60,47 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         //UIパーツの設定
 
         {
+            BuildStringMap();
+
+            //ラベル付きコントロール
+            for (const auto& elem : ctrlToLabel)
+            {
+                HWND hWndItem = GetDlgItem(hWndDlg, elem.first);
+                SetWindowText(hWndItem, stringMap.at(elem.second).c_str());
+                hWndCtrl[elem.first] = hWndItem;
+            }
+
+            //editテキスト
+            for (const auto& elem : chkIDToEditID)
+            {
+                HWND hWndItem = GetDlgItem(hWndDlg, elem.second);
+                hWndEdit[elem.second] = hWndItem;
+            }
+
+            //フィルターアクション用のコンボボックス
+            hWndComboBox = GetDlgItem(hWndDlg, IDC_COMBO);
+            SendMessage(hWndComboBox, CB_ADDSTRING, 0, (LPARAM)stringMap.at(IDS_COMBO_SEL_PERMIT).c_str());
+            SendMessage(hWndComboBox, CB_ADDSTRING, 0, (LPARAM)stringMap.at(IDS_COMBO_SEL_BLOCK).c_str());
+            constexpr DWORD INIT_COMBO_SEL = 0;
+            SendMessage(hWndComboBox, CB_SETCURSEL, INIT_COMBO_SEL, 0);
+
             //フィルター表示用リスト
             hWndList = GetDlgItem(hWndDlg, IDC_LIST);
 
             //全遮断用のテキスト
             hWndTextAllBlock = GetDlgItem(hWndDlg, IDC_TEXT_ALLBLOCK);
-            SetWindowText(hWndTextAllBlock, L"");
+            SetWindowText(hWndTextAllBlock, _T(""));
 
-            InitButton(hWndDlg  , hWndButton);
-            InitEdit(hWndDlg    , hWndEdit);
-            InitCheckBox(hWndDlg, hWndCheckBox);
-            InitComboBox(hWndDlg, hWndComboAction);
 
             //初期状態でチェック状態
-            SendMessage(hWndCheckBox["url"]   , BM_SETCHECK, BST_CHECKED, 0);
-            SendMessage(hWndCheckBox["process"], BM_SETCHECK, BST_CHECKED, 0);
+            SendMessage(hWndCtrl[IDC_CHECK_PROCESS], BM_SETCHECK, BST_CHECKED, 0);
 
             //初期状態で無効化
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"addr"    , 0);
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"port"    , 0);
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"fqdn"    , 0);
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)"protocol", 0);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_ADDR    , (LPARAM)IDC_IPADDRESS);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_PORT    , (LPARAM)IDC_EDIT_PORT);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_FQDN    , (LPARAM)IDC_EDIT_FQDN);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_PROTOCOL, (LPARAM)IDC_EDIT_PROTOCOL);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_URL     , (LPARAM)IDC_EDIT_URL);
 
         }
 
@@ -123,7 +126,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         catch (std::runtime_error& e)
         {
             BOOST_LOG_TRIVIAL(trace) << "CFirewall::CFirewall failed with error: " << e.what();
-            MessageBox(hWndDlg, L"ファイアウォールの初期化に失敗しました", L"", MB_ICONERROR | MB_OK);
+            MessageBox(hWndDlg, stringMap[IDS_ERROR_FW_INIT].c_str(), _T(""), MB_ICONERROR | MB_OK);
             exit(1);
             break;
         }
@@ -138,7 +141,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         catch (std::runtime_error& e)
         {
             BOOST_LOG_TRIVIAL(trace) << "CFirewall::close failed with error: " << e.what();
-            MessageBox(hWndDlg, L"ファイアウォールの終了処理に失敗しました", L"", MB_ICONERROR | MB_OK);
+            MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_EXIT).c_str(), _T(""), MB_ICONERROR | MB_OK);
             exit(1);
             break;
         }
@@ -146,55 +149,70 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         return (INT_PTR)TRUE;
     case FWM_IP_CHECK:
     {
-        LPCSTR sKey = (LPCSTR)wParam;
-        for (const auto& elem : IpKey)
+        UINT chkID = (UINT)wParam;
+        for (const auto& elem : ipAddrCheckIDAndEditID)
         {
-            if (sKey != elem)
+            if (chkID != elem.first)
             {
-                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.c_str(), 0);
+                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.first, (LPARAM)elem.second);
             }
         }
         return (INT_PTR)TRUE;
     }
     case FWM_PORT_CHECK:
     {
-        LPCSTR sKey = (LPCSTR)wParam;
-        for (const auto& elem : PortKey)
+        UINT chkID = (UINT)wParam;
+        for (const auto& elem : portCheckIDAndEditID)
         {
-            if (sKey != elem)
+            if (wParam != elem.first)
             {
-                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.c_str(), 0);
+                SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)elem.first, (LPARAM)elem.second);
             }
         }
         return (INT_PTR)TRUE;
     }
     case FWM_DISABLE_FORM:
     {
-        LPCSTR sKeky = (LPCSTR)wParam;
-        SendMessage(hWndCheckBox[sKeky], BM_SETCHECK   , BST_UNCHECKED, 0);
-        SendMessage(hWndEdit[sKeky]    , EM_SETREADONLY, TRUE         , 0);
+        UINT chkID  = (UINT)wParam;
+        UINT editID = (UINT)lParam;
+        SendMessage(hWndCtrl[chkID] , BM_SETCHECK   , BST_UNCHECKED, 0);
+        SendMessage(hWndEdit[editID], EM_SETREADONLY, TRUE         , 0);
         return (INT_PTR)TRUE;
     }
     case FWM_CHECKBOX:
     {
-        LPCSTR sKey = (LPCSTR)wParam;
-        bool isChecked = BST_CHECKED == SendMessage(hWndCheckBox[sKey], BM_GETCHECK, 0, 0);
+        UINT chkID = (UINT)wParam;
+        UINT editID = (UINT)lParam;
+        bool isChecked = BST_CHECKED == SendMessage(hWndCtrl[chkID], BM_GETCHECK, 0, 0);
 
         //チェックを外した場合はフォームを無効化する
         if (!isChecked)
         {
-            SendMessage(hWndDlg, FWM_DISABLE_FORM, wParam, 0);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, wParam, lParam);
             return (INT_PTR)TRUE;
         }
 
-        SendMessage(hWndEdit[sKey], EM_SETREADONLY, FALSE, 0);
-        bool isIpCheck = IpKey.end() != std::find(IpKey.begin(), IpKey.end(), sKey);
+        SendMessage(hWndEdit[editID], EM_SETREADONLY, FALSE, 0);
+
+        //IPアドレス、FQDN、URLにチェックした場合は自身以外のチェックを外す
+        //例：FQDNにチェック ---> IPアドレスとURLのチェックを外す
+        bool isIpCheck = ipAddrCheckIDAndEditID.end() != std::find(
+            ipAddrCheckIDAndEditID.begin(), 
+            ipAddrCheckIDAndEditID.end(), 
+            std::make_pair(chkID, editID)
+        );
+
         if (isIpCheck)
         {
             SendMessage(hWndDlg, FWM_IP_CHECK, wParam, 0);
         }
 
-        bool isPortCheck = PortKey.end() != std::find(PortKey.begin(), PortKey.end(), sKey);
+        //ポート番号、プロトコル、URLにチェックした場合は自身以外のチェックを外す
+        bool isPortCheck = portCheckIDAndEditID.end() != std::find(
+            portCheckIDAndEditID.begin(), 
+            portCheckIDAndEditID.end(), 
+            std::make_pair(chkID,editID)
+        );
         if (isPortCheck)
         {
             SendMessage(hWndDlg, FWM_PORT_CHECK, wParam, 0);
@@ -207,89 +225,89 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         case IDC_BUTTON_ADD:
         {
             //二重押しを防ぐため無効化しておく
-            EnableWindow(hWndButton["add"], FALSE);
+            EnableWindow(hWndCtrl[IDC_BUTTON_ADD], FALSE);
 
             std::wstringstream ssListItem;
             bool isPermit;
             try
             {
-                for (const auto& elem : hWndCheckBox)
+                for (const auto& elem : chkIDToEditID)
                 {
-                    if (SendMessage(elem.second, BM_GETCHECK, 0, 0) != BST_CHECKED)
+                    if (SendMessage(hWndCtrl[elem.first], BM_GETCHECK, 0, 0) != BST_CHECKED)
                     {
                         continue;
                     }
 
                     constexpr int BUFFER_LENGTH = 1024;
                     std::vector<CHAR> sEditBuffer(BUFFER_LENGTH);
-                    GetWindowTextA(hWndEdit[elem.first], sEditBuffer.data(), BUFFER_LENGTH);
+                    GetWindowTextA(hWndEdit[elem.second], sEditBuffer.data(), BUFFER_LENGTH);
                     
-                    if (elem.first == "addr")
+                    if (elem.first == IDC_CHECK_ADDR)
                     {
                         pFirewall->AddIpAddrCondition(sEditBuffer.data());
                     }
-                    else if (elem.first == "port")
+                    else if (elem.first == IDC_CHECK_PORT)
                     {
                         pFirewall->AddPortCondition(std::atoi(sEditBuffer.data()));
                     }
-                    else if (elem.first == "fqdn")
+                    else if (elem.first == IDC_CHECK_FQDN)
                     {
                         pFirewall->AddFqdnCondition(sEditBuffer.data());
                     }
-                    else if (elem.first == "protocol")
+                    else if (elem.first == IDC_CHECK_PROTOCOL)
                     {
                         pFirewall->AddPortCondition(sEditBuffer.data());
                     }
-                    else if (elem.first == "url")
+                    else if (elem.first == IDC_CHECK_URL)
                     {
                         pFirewall->AddUrlCondition(sEditBuffer.data());
                     }
-                    else if (elem.first == "process")
+                    else if (elem.first == IDC_CHECK_PROCESS)
                     {
                         pFirewall->AddProcessCondition(sEditBuffer.data());
                     }
                     ssListItem << sEditBuffer.data() << ", ";
                 }
-                isPermit = 0 == (int)SendMessage(hWndComboAction, CB_GETCURSEL, 0, 0);
+                isPermit = 0 == (int)SendMessage(hWndComboBox, CB_GETCURSEL, 0, 0);
                 pFirewall->AddFilter(isPermit ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
             }
             catch (std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
-                MessageBox(hWndDlg, L"フィルターの追加に失敗しました", L"", MB_ICONERROR | MB_OK);
-                EnableWindow(hWndButton["add"], TRUE);
+                MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_ADD_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
+                EnableWindow(hWndCtrl[IDC_BUTTON_ADD], TRUE);
                 break;
             }
 
-            ssListItem << (isPermit ? L"許可" : L"遮断");
+            ssListItem << (isPermit ? stringMap.at(IDS_COMBO_SEL_PERMIT) : stringMap.at(IDS_COMBO_SEL_BLOCK));
 
             //ListBoxの末尾に追加(第3引数に-1を指定)
             SendMessage(hWndList, LB_INSERTSTRING, -1, (LPARAM)ssListItem.str().c_str());
 
             for (const auto& elem : hWndEdit)
             {
-                SetWindowText(elem.second, L"");
+                SetWindowText(elem.second, _T(""));
             }
-            EnableWindow(hWndButton["add"], TRUE);
+            EnableWindow(hWndCtrl[IDC_BUTTON_ADD], TRUE);
             return (INT_PTR)TRUE;
         }
         case IDC_BUTTON_DEL:
         {
             //二重押しを防ぐため無効化しておく
-            EnableWindow(hWndButton["del"], FALSE);
+            EnableWindow(hWndCtrl[IDC_BUTTON_DEL], FALSE);
 
             //未選択の場合は-1が返ってくる
             LRESULT idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
             if (idx == -1)
             {
-                EnableWindow(hWndButton["del"], TRUE);
+                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 return (INT_PTR)TRUE;
             }
-            int id = MessageBox(hWndDlg, L"削除しますか？", L"", MB_OKCANCEL | MB_ICONEXCLAMATION);
+            int id = MessageBox(hWndDlg, stringMap.at(IDS_CONFIRM_FW_RM_FILTER).c_str(), _T(""), MB_OKCANCEL | MB_ICONEXCLAMATION);
 
             if (id == IDCANCEL)
             {
-                EnableWindow(hWndButton["del"], TRUE);
+                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 return (INT_PTR)TRUE;
             }
 
@@ -300,18 +318,18 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             catch (std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::RemovingFilter failed with error: " << e.what();
-                MessageBox(hWndDlg, L"フィルターの削除に失敗しました", L"", MB_ICONERROR | MB_OK);
-                EnableWindow(hWndButton["del"], TRUE);
+                MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_RM_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
+                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 break;
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
-            EnableWindow(hWndButton["del"], TRUE);
+            EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
             return (INT_PTR)TRUE;        
         }
         case IDC_BUTTON_ALLBLOCK:
         {
             //二重押しを防ぐため無効化しておく
-            EnableWindow(hWndButton["allBlock"], FALSE);
+            EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], FALSE);
             try
             {
                 pFirewall->AllBlock(!isAllBlock, FW_DIRECTION_OUTBOUND);
@@ -319,48 +337,48 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             catch (const std::runtime_error& e)
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AllBlock failed with error: " << e.what();
-                MessageBox(hWndDlg, L"フィルターの追加に失敗しました", L"", MB_ICONERROR | MB_OK);
-                EnableWindow(hWndButton["allBlock"], TRUE);
+                MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_ADD_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
+                EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], TRUE);
                 break;
             }
             isAllBlock = !isAllBlock;
-            SetWindowText(hWndButton["allBlock"], isAllBlock ? L"全遮断の解除" : L"全遮断の適用");
-            SetWindowText(hWndTextAllBlock, isAllBlock ? L"全通信を遮断中！" : L"");
-            EnableWindow(hWndButton["allBlock"], TRUE);
+            SetWindowText(hWndCtrl[IDC_BUTTON_ALLBLOCK], isAllBlock ? stringMap.at(IDS_BTN_LABEL_ALLBLOCK_DISABLE).c_str() : stringMap.at(IDS_BTN_LABEL_ALLBLOCK_ENABLE).c_str());
+            SetWindowText(hWndTextAllBlock, isAllBlock ? stringMap.at(IDS_STATIC_TEXT_ALLBLOCK_ENABLE).c_str() : _T(""));
+            EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], TRUE);
             return (INT_PTR)TRUE;
 
         }
         case IDC_CHECK_ADDR:
         {
-            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"addr", 0);
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)IDC_CHECK_ADDR, (LPARAM)IDC_IPADDRESS);
             return (INT_PTR)TRUE;
         }
         case IDC_CHECK_FQDN:
         {
-            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"fqdn", 0);
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)IDC_CHECK_FQDN, (LPARAM)IDC_EDIT_FQDN);
             return (INT_PTR)TRUE;
         }
         case IDC_CHECK_PORT:
         {
-            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"port", 0);
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)IDC_CHECK_PORT, (LPARAM)IDC_EDIT_PORT);
             return (INT_PTR)TRUE;
         }
         case IDC_CHECK_PROTOCOL:
         {
-            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"protocol", 0);
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)IDC_CHECK_PROTOCOL, (LPARAM)IDC_EDIT_PROTOCOL);
             return (INT_PTR)TRUE;
         }
         case IDC_CHECK_URL:
         {
-            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)"url", 0);
+            SendMessage(hWndDlg, FWM_CHECKBOX, (WPARAM)IDC_CHECK_URL, (LPARAM)IDC_EDIT_URL);
             return (INT_PTR)TRUE;
         }
         case IDC_CHECK_PROCESS:
         {
-            bool isChecked = BST_CHECKED == SendMessage(hWndCheckBox["process"], BM_GETCHECK, 0, 0);
+            bool isChecked = BST_CHECKED == SendMessage(hWndCtrl[IDC_CHECK_PROCESS], BM_GETCHECK, 0, 0);
 
             //チェックを外した場合フォームを無効化する
-            SendMessage(hWndEdit["process"], EM_SETREADONLY, !isChecked, 0);
+            SendMessage(hWndEdit[IDC_EDIT_PROCESS], EM_SETREADONLY, !isChecked, 0);
             
             return (INT_PTR)TRUE;
         }

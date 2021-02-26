@@ -136,6 +136,9 @@ BEGIN
     IDS_STATIC_TEXT_PROCESS "プロセス(exeまでのフルパス)"
     IDS_STATIC_TEXT_ACTION  "アクション"
     IDS_STATIC_TEXT_ALLBLOCK_ENABLE "全通信の遮断中！"
+    IDS_COMBO_SEL_PERMIT    "許　可"
+    IDS_COMBO_SEL_BLOCK     "遮　断"
+    IDS_ERROR_FW_EXIT       "ファイアウォールの終了処理に失敗しました"
 END
 
 #endif    // 日本語 (日本) resources

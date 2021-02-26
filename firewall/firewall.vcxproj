@@ -148,6 +148,7 @@
     <ClCompile Include="uiConfigure.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="global.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="uiConfigure.h" />
   </ItemGroup>
