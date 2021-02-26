@@ -1,5 +1,5 @@
 LibFirewall.lib
-
+!/third_party/include/boost/log
 # Visual C++ cache files
 ipch/
 *.aps
@@ -55,7 +55,7 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
-[Ll]og/
+[Ll]og/*
 [Ll]ogs/
 
 # User-specific files
