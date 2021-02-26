@@ -2,7 +2,6 @@
 #include "Firewall.h"
 #include "Win32Exception.h"
 #include "resource.h"
-#include "uiConfigure.h"
 #include <Windows.h>
 #include <algorithm>
 #include <string>
