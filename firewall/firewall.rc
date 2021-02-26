@@ -107,6 +107,37 @@ BEGIN
     0
 END
 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE           "ファイアウォール"
+    IDS_ERROR_FW_INIT       "ファイアウォールの初期化に失敗しました"
+    IDS_ERROR_FW_ADD_FILTER "フィルターの追加に失敗しました"
+    IDS_ERROR_FW_RM_FILTER  "フィルターの削除に失敗しました"
+    IDS_CONFIRM_FW_RM_FILTER "削除しますか？"
+    IDS_BTN_LABEL_ADD       "追　加"
+    IDS_BTN_LABEL_DEL       "削　除"
+    IDS_BTN_LABEL_ALLBLOCK_ENABLE "全遮断の適用"
+    IDS_BTN_LABEL_ALLBLOCK_DISABLE "全遮断の解除"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_STATIC_TEXT_IPADDR  "IPアドレス"
+    IDS_STATIC_TEXT_PORT    "ポート番号"
+    IDS_STATIC_TEXT_FQDN    "FQDN"
+    IDS_STATIC_TEXT_PROTOCOL "プロトコル"
+    IDS_STATIC_TEXT_URL     "URL"
+    IDS_STATIC_TEXT_PROCESS "プロセス(exeまでのフルパス)"
+    IDS_STATIC_TEXT_ACTION  "アクション"
+    IDS_STATIC_TEXT_ALLBLOCK_ENABLE "全通信の遮断中！"
+END
+
 #endif    // 日本語 (日本) resources
 /////////////////////////////////////////////////////////////////////////////
 
