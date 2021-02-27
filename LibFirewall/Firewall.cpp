@@ -204,7 +204,8 @@ namespace Win32Util{ namespace WfpUtil{
 	{
 		in_addr hexAddr;
 		int iRet = inet_pton(AF_INET, sAddr.c_str(), &hexAddr);
-		ThrowWsaError(iRet != 1, "inet_pton failed");
+		std::string errMsg = "inet_pton failed with error: " + std::to_string(iRet);
+		ThrowWsaError(iRet != 1, errMsg);
 		return ntohl(hexAddr.S_un.S_addr);
 	}
 
@@ -220,7 +221,7 @@ namespace Win32Util{ namespace WfpUtil{
 			}
 		);
 		DWORD dwRet = GetNetworkParams(pFixedInfo.get(), &ulOutBufLen);
-		ThrowLastError(dwRet != ERROR_SUCCESS, "GetNetworkParams failed");
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		
 		std::vector<std::string> vecDnsServers;
 		vecDnsServers.push_back(pFixedInfo->DnsServerList.IpAddress.String);

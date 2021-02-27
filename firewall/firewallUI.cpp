@@ -14,6 +14,7 @@
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/program_options.hpp>
+#include <boost/scope_exit.hpp>
 
 #pragma comment(lib, "LibFirewall.lib")
 
@@ -225,8 +226,12 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
         {
             //二重押しを防ぐため無効化しておく
             EnableWindow(hWndCtrl[IDC_BUTTON_ADD], FALSE);
-
+            BOOST_SCOPE_EXIT((&hWndCtrl))
+            {
+                EnableWindow(hWndCtrl[IDC_BUTTON_ADD], TRUE);
+            }BOOST_SCOPE_EXIT_END
             std::wstringstream ssListItem;
+            bool isChecked = false; //チェックが一つもない場合スキップする用のフラグ
             bool isPermit;
             try
             {
@@ -241,31 +246,40 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
                     std::vector<CHAR> sEditBuffer(BUFFER_LENGTH);
                     GetWindowTextA(hWndEdit[elem.second], sEditBuffer.data(), BUFFER_LENGTH);
                     
-                    if (elem.first == IDC_CHECK_ADDR)
+                    switch (elem.first)
                     {
+                    case IDC_CHECK_ADDR:
                         pFirewall->AddIpAddrCondition(sEditBuffer.data());
-                    }
-                    else if (elem.first == IDC_CHECK_PORT)
-                    {
+                        isChecked = true;
+                        break;
+                    case IDC_CHECK_PORT:
                         pFirewall->AddPortCondition(std::atoi(sEditBuffer.data()));
-                    }
-                    else if (elem.first == IDC_CHECK_FQDN)
-                    {
+                        isChecked = true;
+                        break;
+                    case IDC_CHECK_FQDN:
                         pFirewall->AddFqdnCondition(sEditBuffer.data());
-                    }
-                    else if (elem.first == IDC_CHECK_PROTOCOL)
-                    {
+                        isChecked = true;
+                        break;
+                    case IDC_CHECK_PROTOCOL:
                         pFirewall->AddPortCondition(sEditBuffer.data());
-                    }
-                    else if (elem.first == IDC_CHECK_URL)
-                    {
+                        isChecked = true;
+                        break;
+                    case IDC_CHECK_URL:
                         pFirewall->AddUrlCondition(sEditBuffer.data());
-                    }
-                    else if (elem.first == IDC_CHECK_PROCESS)
-                    {
+                        isChecked = true;
+                        break;
+                    case IDC_CHECK_PROCESS:
                         pFirewall->AddProcessCondition(sEditBuffer.data());
+                        isChecked = true;
+                        break;
+                    default:
+                        break;
                     }
                     ssListItem << sEditBuffer.data() << ", ";
+                }
+                if (!isChecked)
+                {
+                    break;
                 }
                 isPermit = 0 == (int)SendMessage(hWndComboBox, CB_GETCURSEL, 0, 0);
                 pFirewall->AddFilter(isPermit ? FW_ACTION_PERMIT : FW_ACTION_BLOCK);
@@ -274,7 +288,6 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AddFilter failed with error: " << e.what();
                 MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_ADD_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
-                EnableWindow(hWndCtrl[IDC_BUTTON_ADD], TRUE);
                 break;
             }
 
@@ -287,26 +300,27 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 SetWindowText(elem.second, _T(""));
             }
-            EnableWindow(hWndCtrl[IDC_BUTTON_ADD], TRUE);
             return (INT_PTR)TRUE;
         }
         case IDC_BUTTON_DEL:
         {
             //二重押しを防ぐため無効化しておく
             EnableWindow(hWndCtrl[IDC_BUTTON_DEL], FALSE);
+            BOOST_SCOPE_EXIT((&hWndCtrl))
+            {
+                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
+            }BOOST_SCOPE_EXIT_END
 
             //未選択の場合は-1が返ってくる
             LRESULT idx = SendMessage(hWndList, LB_GETCURSEL, 0, 0);
             if (idx == -1)
             {
-                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 return (INT_PTR)TRUE;
             }
             int id = MessageBox(hWndDlg, stringMap.at(IDS_CONFIRM_FW_RM_FILTER).c_str(), _T(""), MB_OKCANCEL | MB_ICONEXCLAMATION);
 
             if (id == IDCANCEL)
             {
-                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 return (INT_PTR)TRUE;
             }
 
@@ -318,17 +332,20 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::RemovingFilter failed with error: " << e.what();
                 MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_RM_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
-                EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
                 break;
             }
             SendMessage(hWndList, LB_DELETESTRING, idx, 0);
-            EnableWindow(hWndCtrl[IDC_BUTTON_DEL], TRUE);
             return (INT_PTR)TRUE;        
         }
         case IDC_BUTTON_ALLBLOCK:
         {
             //二重押しを防ぐため無効化しておく
             EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], FALSE);
+            BOOST_SCOPE_EXIT((&hWndCtrl))
+            {
+                EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], TRUE);
+            }BOOST_SCOPE_EXIT_END
+
             try
             {
                 pFirewall->AllBlock(!isAllBlock, FW_DIRECTION_OUTBOUND);
@@ -337,13 +354,11 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             {
                 BOOST_LOG_TRIVIAL(trace) << "CFirewall::AllBlock failed with error: " << e.what();
                 MessageBox(hWndDlg, stringMap.at(IDS_ERROR_FW_ADD_FILTER).c_str(), _T(""), MB_ICONERROR | MB_OK);
-                EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], TRUE);
                 break;
             }
             isAllBlock = !isAllBlock;
             SetWindowText(hWndCtrl[IDC_BUTTON_ALLBLOCK], isAllBlock ? stringMap.at(IDS_BTN_LABEL_ALLBLOCK_DISABLE).c_str() : stringMap.at(IDS_BTN_LABEL_ALLBLOCK_ENABLE).c_str());
             SetWindowText(hWndTextAllBlock, isAllBlock ? stringMap.at(IDS_STATIC_TEXT_ALLBLOCK_ENABLE).c_str() : _T(""));
-            EnableWindow(hWndCtrl[IDC_BUTTON_ALLBLOCK], TRUE);
             return (INT_PTR)TRUE;
 
         }
