@@ -23,6 +23,8 @@
 
 namespace Win32Util{ namespace WfpUtil{
 
+	void CALLBACK onDroppedPackets(PVOID pContext, const FWPM_NET_EVENT1* pEvent);
+
 	typedef struct
 	{
 		UINT64 v4;
@@ -66,6 +68,7 @@ namespace Win32Util{ namespace WfpUtil{
 		BYTE m_flagConditions;
 		std::vector<UINT64> m_vecAllBlockFilterIDs;
 		int m_numDnsServers;	//削除する時、フィルターIDのオフセットになる
+		HANDLE m_hEvents;
 
 	public:
 		Impl();
@@ -91,6 +94,8 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddSubLayer();
 		void RemoveSubLayer();
 		void RemoveAllFilters();
+		void SubscribePacketsLogger();
+		void UnsubscribePacketsLogger();
 
 		//[in] sUrl: URL
 		//[out] sFqdn: FQDN, sProtocol: プロトコル
@@ -141,6 +146,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 	void CFirewall::Impl::close()
 	{
+		UnsubscribePacketsLogger();
 		RemoveAllFilters();
 
 		DWORD dwRet;
@@ -169,6 +175,7 @@ namespace Win32Util{ namespace WfpUtil{
 
 		AddFilter(FW_ACTION_PERMIT);
 		m_numDnsServers = dnsServerList.size();
+		SubscribePacketsLogger();
 	}
 
 	void CFirewall::Impl::AddSubLayer()
@@ -198,6 +205,21 @@ namespace Win32Util{ namespace WfpUtil{
 		DWORD dwRet = FwpmSubLayerDeleteByKey0(m_hEngine, &m_subLayerGUID);
 		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 		ZeroMemory(&m_subLayerGUID, sizeof(GUID));
+	}
+
+	void CFirewall::Impl::SubscribePacketsLogger()
+	{
+		FWPM_NET_EVENT_ENUM_TEMPLATE enumTemplate = { 0 };
+		FWPM_NET_EVENT_SUBSCRIPTION subscription = { 0 };
+		subscription.enumTemplate = &enumTemplate;
+		DWORD dwRet = FwpmNetEventSubscribe0(m_hEngine, &subscription, &onDroppedPackets, nullptr, &m_hEvents);
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
+	}
+
+	void CFirewall::Impl::UnsubscribePacketsLogger()
+	{
+		DWORD dwRet = FwpmNetEventUnsubscribe0(m_hEngine, m_hEvents);
+		ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 	}
 
 	UINT32 CFirewall::Impl::TranslateStr2Hex(const std::string& sAddr)
@@ -668,6 +690,21 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AllBlock(bool isEnable, FW_DIRECTION direction)
 	{
 		pimpl->AllBlock(isEnable, direction);
+	}
+
+	void CALLBACK onDroppedPackets(PVOID pContext, const FWPM_NET_EVENT1* pEvent)
+	{
+		if (pEvent->type != FWPM_NET_EVENT_TYPE_CLASSIFY_DROP || pEvent->classifyDrop == nullptr)
+		{
+			return;
+		}
+		UINT16 layerID = pEvent->classifyDrop->layerId;
+		UINT64 filterID = pEvent->classifyDrop->filterId;
+		FWP_BYTE_BLOB appID = pEvent->header.appId;
+		BOOST_LOG_TRIVIAL(trace) << "A packet dropped";
+		BOOST_LOG_TRIVIAL(trace) << "\t" << "layer ID: " << layerID;
+		BOOST_LOG_TRIVIAL(trace) << "\t" << "filter ID: " << filterID;
+
 	}
 
 }	//namespace WfpUtil
