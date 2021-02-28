@@ -273,6 +273,10 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
                         pFirewall->AddProcessCondition(sEditBuffer.data());
                         isChecked = true;
                         break;
+                    case IDC_CHECK_SERV:
+                        pFirewall->AddServCondition(sEditBuffer.data());
+                        isChecked = true;
+                        break;
                     default:
                         break;
                     }

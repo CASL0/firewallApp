@@ -35,6 +35,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFqdnCondition(const std::string& sFqdn);
 		void AddUrlCondition(const std::string& sUrl);
 		void AddProcessCondition(const std::string& sPathToApp);
+		void AddServCondition(const std::string& sServName);
 		void AddFilter(FW_ACTION action);
 		void AllBlock(bool isEnable, FW_DIRECTION direction);
 	};

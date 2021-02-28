@@ -7,6 +7,7 @@
 #include <memory>
 #include <array>
 #include <iphlpapi.h>
+#include <AclAPI.h>
 #include <boost/log/trivial.hpp>
 #include <boost/scope_exit.hpp>
 
@@ -46,11 +47,13 @@ namespace Win32Util{ namespace WfpUtil{
 		//IPアドレス --> 1bit目を立てる
 		//ポート番号 --> 2bit目を立てる
 		//プロセス	 --> 3bit目を立てる
+		//サービス   --> 4bit目を立てる
 		enum
 		{
 			FLAG_IP_ADDR_COND = 0x01,
 			FLAG_PORT_COND	  = 0x02,
 			FLAG_PROCESS_COND = 0x04,
+			FLAG_SERV_COND	  = 0x08,
 
 		};
 
@@ -63,6 +66,7 @@ namespace Win32Util{ namespace WfpUtil{
 		std::vector<IP_ADDR> m_vecIpAddr;
 		UINT16 m_wPort;
 		std::string m_sPathToApp;
+		std::string m_sServName;
 		BYTE m_flagConditions;
 		std::vector<UINT64> m_vecAllBlockFilterIDs;
 		int m_numDnsServers;	//削除する時、フィルターIDのオフセットになる
@@ -79,6 +83,7 @@ namespace Win32Util{ namespace WfpUtil{
 		void AddFqdnCondition(const std::string& sFqdn);
 		void AddUrlCondition(const std::string& sUrl);
 		void AddProcessCondition(const std::string& sPathToApp);
+		void AddServCondition(const std::string& sServName);
 		void AddFilter(FW_ACTION action);
 		void AllBlock(bool isEnable, FW_DIRECTION direction);
 
@@ -116,7 +121,10 @@ namespace Win32Util{ namespace WfpUtil{
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_V6_ADDR_AND_MASK> pFwpV6AddrMask, const std::array<BYTE, 16> pByV6Addr, UINT8 prefixLength);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_V4_ADDR_AND_MASK> pFwpAddrMask, UINT32 dwAddr, UINT32 dwMask);
 		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, UINT16 wPort);
-		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_BYTE_BLOB> pAppBlob);
+		//isAppBlob == true  ---> アプリ指定
+		//isAppBlob == false ---> サービス指定
+		inline void SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_BYTE_BLOB> pBlob, bool isAppBlob);
+
 		inline void InitCondFlags();
 	};
 
@@ -127,6 +135,7 @@ namespace Win32Util{ namespace WfpUtil{
 		m_vecIpAddr(std::vector<IP_ADDR>()),
 		m_wPort(0),
 		m_sPathToApp(std::string()),
+		m_sServName(std::string()),
 		m_flagConditions(0),
 		m_vecAllBlockFilterIDs(std::vector<UINT64>()),
 		m_numDnsServers(0)
@@ -274,13 +283,22 @@ namespace Win32Util{ namespace WfpUtil{
 		vecFwpConditions.push_back(fwpCondition);
 	}
 
-	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_BYTE_BLOB> pAppBlob)
+	inline void CFirewall::Impl::SetupConditions(std::vector<FWPM_FILTER_CONDITION0>& vecFwpConditions, std::shared_ptr<FWP_BYTE_BLOB> pBlob, bool isAppBlob)
 	{
 		FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
-		fwpCondition.fieldKey = FWPM_CONDITION_ALE_APP_ID;
+		if (isAppBlob)
+		{
+			fwpCondition.fieldKey = FWPM_CONDITION_ALE_APP_ID;
+			fwpCondition.conditionValue.type = FWP_BYTE_BLOB_TYPE;
+			fwpCondition.conditionValue.byteBlob = pBlob.get();
+		}
+		else
+		{
+			fwpCondition.fieldKey = FWPM_CONDITION_ALE_USER_ID;
+			fwpCondition.conditionValue.type = FWP_SECURITY_DESCRIPTOR_TYPE;
+			fwpCondition.conditionValue.sd = pBlob.get();
+		}
 		fwpCondition.matchType = FWP_MATCH_EQUAL;
-		fwpCondition.conditionValue.type = FWP_BYTE_BLOB_TYPE;
-		fwpCondition.conditionValue.byteBlob = pAppBlob.get();
 		vecFwpConditions.push_back(fwpCondition);
 	}
 
@@ -470,6 +488,13 @@ namespace Win32Util{ namespace WfpUtil{
 		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sPathToApp;
 	}
 
+	void CFirewall::Impl::AddServCondition(const std::string& sServName)
+	{
+		m_sServName = sServName;
+		m_flagConditions |= FLAG_SERV_COND;
+		BOOST_LOG_TRIVIAL(trace) << "Adding a condition: " << sServName;
+	}
+
 	void CFirewall::Impl::AddFilter(FW_ACTION action)
 	{
 		BOOST_SCOPE_EXIT((this_))
@@ -509,7 +534,28 @@ namespace Win32Util{ namespace WfpUtil{
 			DWORD dwRet = FwpmGetAppIdFromFileName0(AstrToWstr(m_sPathToApp).c_str(), &appBlob);
 			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
 			pAppBlob.reset(appBlob);
-			SetupConditions(vecWfpConditions, pAppBlob);
+			SetupConditions(vecWfpConditions, pAppBlob, true);
+		}
+
+		EXPLICIT_ACCESS access;
+		FWP_BYTE_BLOB sdBlob;
+		ULONG sdLen;
+		PSECURITY_DESCRIPTOR sd = nullptr;
+		if (m_flagConditions & FLAG_SERV_COND)
+		{
+			BuildExplicitAccessWithName(&access, const_cast<WCHAR*>(L"NT SERVICE\\wuauserv"), FWP_ACTRL_MATCH_FILTER, GRANT_ACCESS, 0);
+			DWORD dwRet = BuildSecurityDescriptor(nullptr, nullptr, 1, &access, 0, nullptr, nullptr, &sdLen, &sd);
+			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
+			BOOST_LOG_TRIVIAL(trace) << "BuildSecuirtyDescriptor succeeded";
+			sdBlob.data = (UINT8*)sd;
+			sdBlob.size = sdLen;
+
+			FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
+			fwpCondition.fieldKey = FWPM_CONDITION_ALE_USER_ID;
+			fwpCondition.conditionValue.type = FWP_SECURITY_DESCRIPTOR_TYPE;
+			fwpCondition.conditionValue.sd = &sdBlob;
+			fwpCondition.matchType = FWP_MATCH_EQUAL;
+			vecWfpConditions.push_back(fwpCondition);
 		}
 
 		if (m_flagConditions & FLAG_PORT_COND)
@@ -568,6 +614,7 @@ namespace Win32Util{ namespace WfpUtil{
 			vecWfpConditions.pop_back();
 		}
 		m_filterIdStore.push_back(vecFilterID);
+		LocalFree(sd);
 	}
 
 	void CFirewall::Impl::AllBlock(bool isEnable, FW_DIRECTION direction)
@@ -658,6 +705,11 @@ namespace Win32Util{ namespace WfpUtil{
 	void CFirewall::AddProcessCondition(const std::string& sPathToApp)
 	{
 		pimpl->AddProcessCondition(sPathToApp);
+	}
+
+	void CFirewall::AddServCondition(const std::string& sServName)
+	{
+		pimpl->AddServCondition(sServName);
 	}
 
 	void CFirewall::AddFilter(FW_ACTION action)
