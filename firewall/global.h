@@ -36,6 +36,7 @@ const std::map<UINT, UINT> ctrlToLabel =
 	{IDC_CHECK_PROCESS	,IDS_STATIC_TEXT_PROCESS},
 	{IDC_TEXT_ACTION	,IDS_STATIC_TEXT_ACTION},
 	{IDC_TEXT_ALLBLOCK  ,IDS_STATIC_TEXT_ALLBLOCK_ENABLE},
+	{IDC_CHECK_SERV		,IDS_STATIC_TEXT_SERV},	
 };
 
 //チェックボックスのID ---> editテキストのID
@@ -47,10 +48,11 @@ const std::map<UINT, UINT> chkIDToEditID =
 	{IDC_CHECK_PROTOCOL,IDC_EDIT_PROTOCOL},
 	{IDC_CHECK_URL     ,IDC_EDIT_URL},
 	{IDC_CHECK_PROCESS ,IDC_EDIT_PROCESS},
+	{IDC_CHECK_SERV	   ,IDC_EDIT_SERV},
 };
 
 //StringTableのID
-const std::array<UINT, 20> stringTableIDs =
+const std::array<UINT, 21> stringTableIDs =
 {
 	IDS_APP_TITLE,
 	IDS_ERROR_FW_INIT,
@@ -72,6 +74,7 @@ const std::array<UINT, 20> stringTableIDs =
 	IDS_COMBO_SEL_PERMIT,
 	IDS_COMBO_SEL_BLOCK,
 	IDS_ERROR_FW_EXIT,
+	IDS_STATIC_TEXT_SERV,
 };
 
 const std::array<std::pair<UINT, UINT>, 3> ipAddrCheckIDAndEditID =

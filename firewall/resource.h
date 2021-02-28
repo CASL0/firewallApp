@@ -23,6 +23,7 @@
 #define IDS_COMBO_SEL_PERMIT            120
 #define IDS_COMBO_SEL_BLOCK             121
 #define IDS_ERROR_FW_EXIT               122
+#define IDS_STATIC_TEXT_SERV            123
 #define IDC_BUTTON_ADD                  1001
 #define IDC_IPADDRESS                   1002
 #define IDC_EDIT_PROTOCOL               1003
@@ -42,6 +43,8 @@
 #define IDC_CHECK_PROCESS               1023
 #define IDC_BUTTON_ALLBLOCK             1024
 #define IDC_TEXT_ALLBLOCK               1025
+#define IDC_CHECK_SERV                  1026
+#define IDC_EDIT_SERV                   1027
 
 // Next default values for new objects
 // 
@@ -49,7 +52,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        104
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1026
+#define _APS_NEXT_CONTROL_VALUE         1028
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

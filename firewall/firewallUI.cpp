@@ -101,6 +101,7 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_FQDN    , (LPARAM)IDC_EDIT_FQDN);
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_PROTOCOL, (LPARAM)IDC_EDIT_PROTOCOL);
             SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_URL     , (LPARAM)IDC_EDIT_URL);
+            SendMessage(hWndDlg, FWM_DISABLE_FORM, (WPARAM)IDC_CHECK_SERV    , (LPARAM)IDC_EDIT_SERV);
 
         }
 
@@ -395,6 +396,16 @@ INT_PTR CALLBACK DialogFunc(HWND hWndDlg, UINT message, WPARAM wParam, LPARAM lP
             SendMessage(hWndEdit[IDC_EDIT_PROCESS], EM_SETREADONLY, !isChecked, 0);
             
             return (INT_PTR)TRUE;
+        }
+        case IDC_CHECK_SERV:
+        {
+            bool isChecked = BST_CHECKED == SendMessage(hWndCtrl[IDC_CHECK_SERV], BM_GETCHECK, 0, 0);
+
+            //チェックを外した場合フォームを無効化する
+            SendMessage(hWndEdit[IDC_EDIT_SERV], EM_SETREADONLY, !isChecked, 0);
+
+            return (INT_PTR)TRUE;
+
         }
         }   //switch (LOWORD(wParam))
         break;
