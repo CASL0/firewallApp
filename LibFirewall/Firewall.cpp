@@ -700,11 +700,35 @@ namespace Win32Util{ namespace WfpUtil{
 		}
 		UINT16 layerID = pEvent->classifyDrop->layerId;
 		UINT64 filterID = pEvent->classifyDrop->filterId;
-		FWP_BYTE_BLOB appID = pEvent->header.appId;
 		BOOST_LOG_TRIVIAL(trace) << "A packet dropped";
 		BOOST_LOG_TRIVIAL(trace) << "\t" << "layer ID: " << layerID;
 		BOOST_LOG_TRIVIAL(trace) << "\t" << "filter ID: " << filterID;
+		BOOST_LOG_TRIVIAL(trace) << "\t" << "local port: " << pEvent->header.localPort;
+		BOOST_LOG_TRIVIAL(trace) << "\t" << "remote port: " << pEvent->header.remotePort;
+		switch (pEvent->header.ipVersion)
+		{
+		case FWP_IP_VERSION_V4:
+		{
+			UINT32 addrNetworkOrder;
+			addrNetworkOrder = htonl(pEvent->header.localAddrV4);
+			std::vector<CHAR> ipBuffer(50);
+			BOOST_LOG_TRIVIAL(trace) << "\t" << "local address(v4): " << inet_ntop(AF_INET, &addrNetworkOrder, ipBuffer.data(), 50);
 
+			addrNetworkOrder = htonl(pEvent->header.remoteAddrV4);
+			BOOST_LOG_TRIVIAL(trace) << "\t" << "remote address(v4): " << inet_ntop(AF_INET, &addrNetworkOrder, ipBuffer.data(), 50);
+
+			break;
+		}
+		case FWP_IP_VERSION_V6:
+		{
+			std::vector<CHAR> ipBuffer(50);
+			BOOST_LOG_TRIVIAL(trace) << "\t" << "local address(v6): " << inet_ntop(AF_INET6, &pEvent->header.localAddrV6, ipBuffer.data(), 50);
+			BOOST_LOG_TRIVIAL(trace) << "\t" << "remote address(v6): " << inet_ntop(AF_INET6, &pEvent->header.remoteAddrV6, ipBuffer.data(), 50);
+			break;
+		}
+		default:
+			break;
+		}
 	}
 
 }	//namespace WfpUtil
