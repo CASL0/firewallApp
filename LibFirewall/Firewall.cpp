@@ -537,23 +537,26 @@ namespace Win32Util{ namespace WfpUtil{
 			SetupConditions(vecWfpConditions, pAppBlob, true);
 		}
 
-		EXPLICIT_ACCESS access;
-		FWP_BYTE_BLOB sdBlob;
+
 		ULONG sdLen;
-		PSECURITY_DESCRIPTOR sd = nullptr;
+		PSECURITY_DESCRIPTOR tmp = nullptr;
+		std::unique_ptr<std::remove_pointer<PSECURITY_DESCRIPTOR>::type, decltype(&LocalFree)> pSD(nullptr, LocalFree);
 		if (m_flagConditions & FLAG_SERV_COND)
 		{
+			EXPLICIT_ACCESS access;
 			BuildExplicitAccessWithName(&access, const_cast<WCHAR*>(L"NT SERVICE\\wuauserv"), FWP_ACTRL_MATCH_FILTER, GRANT_ACCESS, 0);
-			DWORD dwRet = BuildSecurityDescriptor(nullptr, nullptr, 1, &access, 0, nullptr, nullptr, &sdLen, &sd);
+			DWORD dwRet = BuildSecurityDescriptor(nullptr, nullptr, 1, &access, 0, nullptr, nullptr, &sdLen, &tmp);
 			ThrowWin32Error(dwRet != ERROR_SUCCESS, dwRet);
+			pSD.reset(tmp);
 			BOOST_LOG_TRIVIAL(trace) << "BuildSecuirtyDescriptor succeeded";
-			sdBlob.data = (UINT8*)sd;
+			FWP_BYTE_BLOB sdBlob;
+			sdBlob.data = (UINT8*)pSD.get();
 			sdBlob.size = sdLen;
 
 			FWPM_FILTER_CONDITION0 fwpCondition = { 0 };
 			fwpCondition.fieldKey = FWPM_CONDITION_ALE_USER_ID;
 			fwpCondition.conditionValue.type = FWP_SECURITY_DESCRIPTOR_TYPE;
-			fwpCondition.conditionValue.sd = &sdBlob;
+			fwpCondition.conditionValue.byteBlob = &sdBlob;
 			fwpCondition.matchType = FWP_MATCH_EQUAL;
 			vecWfpConditions.push_back(fwpCondition);
 		}
